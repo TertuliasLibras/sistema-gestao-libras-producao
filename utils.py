@@ -4,17 +4,50 @@ from datetime import datetime, timedelta
 import calendar
 import streamlit as st
 import os
-from database import (
-    load_students, 
-    load_payments, 
-    load_internships,
-    save_student, 
-    update_student,
-    save_payment, 
-    save_internship,
-    delete_student,
-    delete_student_payments
-)
+
+# Tentar importar funções do database
+try:
+    from database import (
+        load_students, 
+        load_payments, 
+        load_internships,
+        save_student, 
+        update_student,
+        save_payment, 
+        save_internship,
+        delete_student,
+        delete_student_payments
+    )
+except ImportError as e:
+    st.error(f"Erro ao importar módulo database: {e}")
+    
+    # Funções mock para caso de falha
+    def load_students():
+        return []
+    
+    def load_payments():
+        return []
+    
+    def load_internships():
+        return []
+    
+    def save_student(student_data):
+        return False
+    
+    def update_student(phone, student_data):
+        return False
+    
+    def save_payment(payment_data):
+        return False
+    
+    def save_internship(internship_data):
+        return False
+    
+    def delete_student(phone):
+        return False
+    
+    def delete_student_payments(phone):
+        return False
 
 # Função para converter lista de dicionários para DataFrame
 def list_to_df(data_list):
