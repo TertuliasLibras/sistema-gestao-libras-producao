@@ -220,4 +220,73 @@ def pagina_gerenciar_usuarios():
     
     # Aba Editar Usuário
     with tab_edit:
-        st.subheader("Editar
+        st.subheader("Editar Usuário")
+        
+        if not usuarios_df.empty:
+            # Selecionar usuário
+            selected_user = st.selectbox(
+                "Selecione o usuário",
+                usuarios_df['username'].tolist()
+            )
+            
+            # Obter dados do usuário
+            user_data = usuarios_df[usuarios_df['username'] == selected_user].iloc[0]
+            
+            with st.form("edit_user_form"):
+                # Nome completo
+                name = st.text_input("Nome completo", value=user_data['name'])
+                
+                # Senha (opcional)
+                st.write("Deixe em branco para manter a senha atual:")
+                password = st.text_input("Nova senha", type="password")
+                confirm_password = st.text_input("Confirmar nova senha", type="password")
+                
+                # Nível de acesso
+                level = st.selectbox(
+                    "Nível de acesso",
+                    ["user", "admin"],
+                    index=0 if user_data['level'] == "user" else 1,
+                    format_func=lambda x: "Administrador" if x == "admin" else "Usuário Comum"
+                )
+                
+                submitted = st.form_submit_button("Atualizar")
+                
+                if submitted:
+                    # Validação
+                    if not name:
+                        st.error("O nome é obrigatório.")
+                    elif password and password != confirm_password:
+                        st.error("As senhas não coincidem.")
+                    else:
+                        # Atualizar usuário
+                        usuarios_df.loc[usuarios_df['username'] == selected_user, 'name'] = name
+                        usuarios_df.loc[usuarios_df['username'] == selected_user, 'level'] = level
+                        
+                        # Atualizar senha se fornecida
+                        if password:
+                            usuarios_df.loc[usuarios_df['username'] == selected_user, 'password_hash'] = hash_senha(password)
+                        
+                        # Salvar no CSV
+                        salvar_usuarios(usuarios_df)
+                        
+                        st.success(f"Usuário '{selected_user}' atualizado com sucesso!")
+            
+            # Excluir usuário
+            if st.button("Excluir Usuário", type="primary", help="Esta ação não pode ser desfeita!"):
+                # Não permitir excluir o último administrador
+                admin_count = len(usuarios_df[usuarios_df['level'] == 'admin'])
+                is_admin = user_data['level'] == 'admin'
+                
+                if is_admin and admin_count <= 1:
+                    st.error("Não é possível excluir o último administrador.")
+                else:
+                    # Excluir usuário
+                    usuarios_df = usuarios_df[usuarios_df['username'] != selected_user]
+                    
+                    # Salvar no CSV
+                    salvar_usuarios(usuarios_df)
+                    
+                    st.success(f"Usuário '{selected_user}' excluído com sucesso!")
+                    st.rerun()
+        else:
+            st.info("Nenhum usuário cadastrado.")
