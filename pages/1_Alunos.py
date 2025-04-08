@@ -2,6 +2,17 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
+# Tentar importar login normalmente primeiro
+try:
+    from login import verificar_autenticacao, mostrar_pagina_login
+except ImportError:
+    # Se não conseguir, tentar o fallback
+    try:
+        from login_fallback import verificar_autenticacao, mostrar_pagina_login
+    except ImportError:
+        st.error("Não foi possível importar o módulo de login.")
+        st.stop()
+
 # Verificar se estamos no ambiente de produção
 try:
     from login import verificar_autenticacao, mostrar_pagina_login
