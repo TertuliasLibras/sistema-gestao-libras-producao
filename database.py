@@ -24,6 +24,7 @@ def init_connection():
         return None
     
     try:
+        # Removi qualquer argumento opcional como proxy que estava causando o erro
         return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
         st.error(f"Erro ao conectar ao Supabase: {e}")
