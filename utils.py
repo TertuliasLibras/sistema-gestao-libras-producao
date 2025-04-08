@@ -5,50 +5,6 @@ import calendar
 import streamlit as st
 import os
 
-# Tentar importar funções do database
-try:
-    from database import (
-        load_students, 
-        load_payments, 
-        load_internships,
-        save_student, 
-        update_student,
-        save_payment, 
-        save_internship,
-        delete_student,
-        delete_student_payments
-    )
-except ImportError as e:
-    st.error(f"Erro ao importar módulo database: {e}")
-    
-    # Funções mock para caso de falha
-    def load_students():
-        return []
-    
-    def load_payments():
-        return []
-    
-    def load_internships():
-        return []
-    
-    def save_student(student_data):
-        return False
-    
-    def update_student(phone, student_data):
-        return False
-    
-    def save_payment(payment_data):
-        return False
-    
-    def save_internship(internship_data):
-        return False
-    
-    def delete_student(phone):
-        return False
-    
-    def delete_student_payments(phone):
-        return False
-
 # Função para converter lista de dicionários para DataFrame
 def list_to_df(data_list):
     if not data_list:
@@ -56,51 +12,76 @@ def list_to_df(data_list):
     return pd.DataFrame(data_list)
 
 def load_students_data():
-    """Load student data from Supabase"""
-    students = load_students()
-    return list_to_df(students)
+    """Load student data from CSV file"""
+    try:
+        from database import load_students
+        students = load_students()
+        return list_to_df(students)
+    except Exception as e:
+        st.error(f"Erro ao carregar dados dos alunos: {e}")
+        return pd.DataFrame()
 
 def load_payments_data():
-    """Load payment data from Supabase"""
-    payments = load_payments()
-    return list_to_df(payments)
+    """Load payment data from CSV file"""
+    try:
+        from database import load_payments
+        payments = load_payments()
+        return list_to_df(payments)
+    except Exception as e:
+        st.error(f"Erro ao carregar dados de pagamentos: {e}")
+        return pd.DataFrame()
 
 def load_internships_data():
-    """Load internship data from Supabase"""
-    internships = load_internships()
-    return list_to_df(internships)
+    """Load internship data from CSV file"""
+    try:
+        from database import load_internships
+        internships = load_internships()
+        return list_to_df(internships)
+    except Exception as e:
+        st.error(f"Erro ao carregar dados de estágios: {e}")
+        return pd.DataFrame()
 
 def save_students_data(df):
-    """Save student data to Supabase"""
-    # Converter DataFrame para lista de dicionários
-    if df is None or df.empty:
-        return
+    """Save student data to CSV file"""
+    try:
+        if df is None or df.empty:
+            return
         
-    # Para cada estudante, verificar se já existe e atualizar/inserir
-    for _, row in df.iterrows():
-        student_data = row.to_dict()
-        save_student(student_data)
+        from database import save_student
+        # Para cada estudante, salvar os dados
+        for _, row in df.iterrows():
+            student_data = row.to_dict()
+            save_student(student_data)
+    except Exception as e:
+        st.error(f"Erro ao salvar dados dos alunos: {e}")
 
 def save_payments_data(df):
-    """Save payment data to Supabase"""
-    if df is None or df.empty:
-        return
+    """Save payment data to CSV file"""
+    try:
+        if df is None or df.empty:
+            return
         
-    # Excluir pagamentos anteriores e inserir todos novamente
-    # (abordagem mais simples para garantir sincronização)
-    for _, row in df.iterrows():
-        payment_data = row.to_dict()
-        save_payment(payment_data)
+        from database import save_payment
+        # Para cada pagamento, salvar os dados
+        for _, row in df.iterrows():
+            payment_data = row.to_dict()
+            save_payment(payment_data)
+    except Exception as e:
+        st.error(f"Erro ao salvar dados de pagamentos: {e}")
         
 def save_internships_data(df):
-    """Save internship data to Supabase"""
-    if df is None or df.empty:
-        return
+    """Save internship data to CSV file"""
+    try:
+        if df is None or df.empty:
+            return
         
-    # Para cada estágio, verificar se já existe e atualizar/inserir
-    for _, row in df.iterrows():
-        internship_data = row.to_dict()
-        save_internship(internship_data)
+        from database import save_internship
+        # Para cada estágio, salvar os dados
+        for _, row in df.iterrows():
+            internship_data = row.to_dict()
+            save_internship(internship_data)
+    except Exception as e:
+        st.error(f"Erro ao salvar dados de estágios: {e}")
 
 def get_active_students(students_df):
     """Get active students"""
