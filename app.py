@@ -5,16 +5,17 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import calendar
 
-# Tentar importar login normalmente primeiro
+# Criar diretórios necessários
+os.makedirs("data", exist_ok=True)
+os.makedirs("backup", exist_ok=True)
+os.makedirs("assets/images", exist_ok=True)
+
+# Tentar importar login
 try:
     from login import verificar_autenticacao, mostrar_pagina_login, logout
-except ImportError:
-    # Se não conseguir, tentar o fallback
-    try:
-        from login_fallback import verificar_autenticacao, mostrar_pagina_login, logout
-    except ImportError:
-        st.error("Não foi possível importar o módulo de login.")
-        st.stop()
+except ImportError as e:
+    st.error(f"Erro ao importar módulo de login: {e}")
+    st.stop()
 
 # Tentar importar utils
 try:
@@ -52,6 +53,26 @@ except ImportError as e:
     def get_active_students(*args):
         return pd.DataFrame()
 
+# Importar módulo de backup
+try:
+    from backup import create_backup, list_backups, restore_backup, download_backup
+except ImportError:
+    # Funções vazias para substituir
+    def create_backup():
+        st.info("Módulo de backup não disponível.")
+        return None
+    
+    def list_backups():
+        return []
+    
+    def restore_backup(*args):
+        st.info("Módulo de backup não disponível.")
+        return False
+    
+    def download_backup(*args):
+        st.info("Módulo de backup não disponível.")
+        return None
+
 # Configuração da página
 st.set_page_config(
     page_title="Tertúlia Libras - Sistema de Gestão",
@@ -64,58 +85,33 @@ st.set_page_config(
 if not verificar_autenticacao():
     mostrar_pagina_login()
 else:
-    # Dashboard
-    st.title("Dashboard")
-    
-    try:
-        # Carregar dados
-        students_df = load_students_data()
-        payments_df = load_payments_data()
-        internships_df = load_internships_data()
+    # Sidebar
+    with st.sidebar:
+        st.write(f"Bem-vindo, {st.session_state.get('nome', 'Usuário')}!")
         
-        # Estatísticas principais
-        total_students = len(students_df) if not students_df.empty else 0
-        active_students = len(get_active_students(students_df)) if not students_df.empty else 0
-        
-        # Calcular receita mensal
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-        monthly_revenue = calculate_monthly_revenue(students_df, payments_df, current_month, current_year)
-        
-        # Mostrar estatísticas
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(label="Total de Alunos", value=total_students)
-        with col2:
-            st.metric(label="Alunos Ativos", value=active_students)
-        with col3:
-            st.metric(label="Receita Mensal Esperada", value=format_currency(monthly_revenue))
-        
-        # Alunos com pagamentos atrasados
-        st.subheader("Alunos com Pagamentos Atrasados")
-        overdue_df = get_overdue_payments(students_df, payments_df)
-        
-        if not overdue_df.empty:
-            # Limitar colunas exibidas
-            display_cols = ['name', 'phone', 'days_overdue', 'monthly_fee']
-            if all(col in overdue_df.columns for col in display_cols):
-                overdue_display = overdue_df[display_cols].copy()
-                
-                # Formatar valores
-                overdue_display['days_overdue'] = overdue_display['days_overdue'].apply(lambda x: f"{x} dias")
-                if 'monthly_fee' in overdue_display.columns:
-                    overdue_display['monthly_fee'] = overdue_display['monthly_fee'].apply(format_currency)
-                
-                st.dataframe(overdue_display)
-            else:
-                st.info("Dados de pagamentos atrasados não contêm todas as colunas necessárias.")
-        else:
-            st.info("Não há alunos com pagamentos atrasados.")
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
-        st.info("Esta é uma versão demonstrativa. Algumas funcionalidades podem não estar disponíveis.")
-    
-    # Botão de logout
-    if st.sidebar.button("Sair"):
-        logout()
-        st.rerun()
+        # Menu de backup
+        if st.session_state.get('nivel') == 'admin':
+            st.subheader("Backup e Restauração")
+            backup_action = st.radio(
+                "Ações de Backup:",
+                ["Nenhuma", "Criar Backup", "Restaurar Backup", "Baixar Backup"]
+            )
+            
+            if backup_action == "Criar Backup":
+                if st.button("Criar Backup Agora"):
+                    backup_path = create_backup()
+                    if backup_path:
+                        st.success(f"Backup criado com sucesso!")
+            
+            elif backup_action == "Restaurar Backup":
+                backups = list_backups()
+                if backups:
+                    backup_options = [b["name"] + " - " + b["timestamp"] for b in backups]
+                    selected_backup = st.selectbox("Selecione um backup:", backup_options)
+                    
+                    if st.button("Restaurar Backup Selecionado"):
+                        selected_idx = backup_options.index(selected_backup)
+                        backup_folder = backups[selected_idx]["folder"]
+                        
+                        if restore_backup(backup_folder):
+                            st.success("Backup restaurado com
