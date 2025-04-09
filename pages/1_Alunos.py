@@ -51,8 +51,7 @@ with col1:
             st.warning(f"Logo não pôde ser carregada. App continuará funcionando normalmente.")
 with col2:
     st.title("Gerenciamento de Alunos")
-
-# Load data
+    # Load data
 students_df = load_students_data()
 payments_df = load_payments_data()
 
@@ -86,8 +85,7 @@ with tab1:
             notes = st.text_area("Observações", height=80)
         
         submitted = st.form_submit_button("Cadastrar Aluno")
-        
-        if submitted:
+                if submitted:
             if not phone or not cpf:
                 st.error("Telefone e CPF são campos obrigatórios!")
             elif not validate_phone(phone):
@@ -139,8 +137,7 @@ with tab1:
                 save_payments_data(payments_df)
                 
                 st.success(f"Aluno {name} cadastrado com sucesso!")
-
-with tab2:
+                with tab2:
     st.subheader("Lista de Alunos")
     
     # Filter options
@@ -177,8 +174,7 @@ with tab2:
                 filtered_df['name'].str.lower().str.contains(search_term, na=False) |
                 filtered_df['phone'].str.lower().str.contains(search_term, na=False)
             ]
-        
-        # Display dataframe
+                    # Display dataframe
         if not filtered_df.empty:
             # Create a copy with formatted data for display
             display_df = filtered_df.copy()
@@ -252,8 +248,7 @@ with tab2:
             )
             
             st.info(f"Total de alunos: {len(filtered_df)}")
-            
-            # Export option
+                        # Export option
             if st.button("Exportar Lista (CSV)"):
                 export_df = filtered_df.copy()
                 # Convert to CSV
@@ -290,8 +285,7 @@ with tab3:
             # Create edit form
             with st.form("edit_student_form"):
                 col1, col2 = st.columns(2)
-                
-                with col1:
+                                with col1:
                     name = st.text_input("Nome Completo", value=student['name'])
                     cpf = st.text_input("CPF", value=student['cpf'] if 'cpf' in student else "")
                     phone = st.text_input("Telefone/WhatsApp", value=student['phone'], disabled=True,
@@ -345,8 +339,7 @@ with tab3:
                         format_func=lambda x: 'Ativo' if x == 'active' else 'Cancelado',
                         index=0 if student['status'] == 'active' else 1
                     )
-                    
-                    cancellation_date = None
+                                        cancellation_date = None
                     cancellation_fee_paid = None
                     
                     if status == 'canceled':
@@ -371,8 +364,7 @@ with tab3:
                 
                 with col2:
                     delete_button = st.form_submit_button("Excluir Aluno", type="primary", use_container_width=True, help="Atenção: Esta ação não pode ser desfeita!")
-                
-                if update_button:
+                                    if update_button:
                     # Update student record
                     students_df.loc[students_df['phone'] == selected_phone, 'name'] = name
                     
