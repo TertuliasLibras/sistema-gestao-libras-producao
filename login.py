@@ -1,292 +1,355 @@
 import streamlit as st
-import hashlib
 import pandas as pd
 import os
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta
+from config import get_logo_path
+from database import authenticate_user, load_users, save_user, update_user, delete_user
 
-# Caminho para o arquivo CSV de usuários
-USERS_FILE = os.path.join("data", "users.csv")
-os.makedirs("data", exist_ok=True)
+# Nome da variável de sessão para login
+LOGIN_SESSION_VAR = "usuario_autenticado"
+LOGIN_EXPIRY_VAR = "login_expiracao"
+# Tempo de expiração da sessão em horas
+LOGIN_EXPIRY_HOURS = 12
 
-# Função para calcular o hash MD5 da senha
+# Função para hash de senha
 def hash_senha(senha):
-    """Gera um hash MD5 para a senha fornecida"""
+    # Usando MD5 para compatibilidade com senhas existentes no sistema
     return hashlib.md5(senha.encode()).hexdigest()
 
-# Função para carregar usuários do arquivo CSV
+# Função para carregar usuários
 def carregar_usuarios():
-    """Carrega usuários de um arquivo CSV ou cria uma lista padrão se o arquivo não existir"""
-    # Usuário admin padrão
-    usuarios_padrao = [{
-        "username": "admin",
-        "name": "Administrador",
-        "password_hash": "0192023a7bbd73250516f069df18b500",  # hash de admin123
-        "level": "admin",
-        "created_at": datetime.now().strftime("%Y-%m-%d")
-    }]
+    # Carregar usuários do banco de dados
+    usuarios = load_users()
     
-    # Verificar se existe um arquivo CSV de usuários
-    if os.path.exists(USERS_FILE):
-        try:
-            df = pd.read_csv(USERS_FILE)
-            return df
-        except:
-            # Em caso de erro, retornar lista padrão
-            return pd.DataFrame(usuarios_padrao)
-    else:
-        # Se o arquivo não existir, criar diretório se necessário
-        os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
-        
-        # Criar DataFrame e salvar
-        df = pd.DataFrame(usuarios_padrao)
-        df.to_csv(USERS_FILE, index=False)
-        
-        return df
+    if not usuarios:
+        # Se não existirem usuários, criar o usuário admin padrão
+        usuario_admin = {
+            "username": "admin",
+            "password_hash": hash_senha("admin123"),
+            "name": "Administrador",
+            "level": "admin",
+            "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        save_user(usuario_admin)
+        return pd.DataFrame([{
+            "usuario": "admin",
+            "senha_hash": hash_senha("admin123"),
+            "nome": "Administrador", 
+            "nivel": "admin"
+        }])
+    
+    # Converter do formato do Supabase para o formato usado no aplicativo
+    usuarios_convertidos = []
+    for usuario in usuarios:
+        usuarios_convertidos.append({
+            "usuario": usuario.get("username", ""),
+            "senha_hash": usuario.get("password_hash", ""),
+            "nome": usuario.get("name", ""),
+            "nivel": usuario.get("level", "usuario")
+        })
+    
+    return pd.DataFrame(usuarios_convertidos)
 
-# Função para salvar usuários em CSV
 def salvar_usuarios(df):
-    """Salva usuários em um arquivo CSV"""
-    os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
-    df.to_csv(USERS_FILE, index=False)
+    # Para cada usuário no DataFrame, salvar no Supabase
+    for _, row in df.iterrows():
+        user_data = {
+            "username": row["usuario"],
+            "password_hash": row["senha_hash"],
+            "name": row["nome"],
+            "level": row["nivel"],
+            "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        # Verificar se o usuário já existe para atualizar ou criar
+        usuarios = load_users()
+        usuario_existente = None
+        user_id = None
+        
+        for u in usuarios:
+            if u.get("username") == row["usuario"]:
+                usuario_existente = u
+                user_id = u.get("id")
+                break
+        
+        if usuario_existente:
+            update_user(user_id, user_data)
+        else:
+            save_user(user_data)
 
 # Função para verificar login
 def verificar_login(usuario, senha):
-    """Verifica se o usuário e senha correspondem a um usuário válido"""
-    # Calcular hash da senha
+    # Calcular hash da senha fornecida
     senha_hash = hash_senha(senha)
     
-    # Carregar usuários
+    # Usar função direta do Supabase para autenticar
+    user_data = authenticate_user(usuario, senha_hash)
+    
+    if user_data:
+        # Obter informações do usuário - usar apenas o campo "level"
+        nivel = user_data.get("level", "usuario")
+        nome = user_data.get("name", usuario)
+        
+        # Definir expiração
+        expiracao = datetime.now() + timedelta(hours=LOGIN_EXPIRY_HOURS)
+        
+        return True, nivel, nome, expiracao
+    
+    # Caso a autenticação direta falhe, tentar com o método do DataFrame para compatibilidade
     usuarios_df = carregar_usuarios()
     
     # Verificar se o usuário existe
-    usuario_row = usuarios_df[usuarios_df['username'] == usuario]
-    
-    if usuario_row.empty:
-        return False
-    
-    # Verificar senha
-    if usuario_row.iloc[0]['password_hash'] == senha_hash:
-        # Armazenar informações do usuário na sessão
-        st.session_state['autenticado'] = True
-        st.session_state['usuario'] = usuario
-        st.session_state['nome'] = usuario_row.iloc[0]['name']
-        st.session_state['nivel'] = usuario_row.iloc[0]['level']
+    if usuario in usuarios_df["usuario"].values:
+        # Obter o hash da senha armazenada
+        senha_hash_stored = usuarios_df.loc[usuarios_df["usuario"] == usuario, "senha_hash"].values[0]
         
-        return True
+        # Verificar se a senha corresponde
+        if senha_hash_stored == senha_hash:
+            # Obter o nível de acesso
+            nivel = usuarios_df.loc[usuarios_df["usuario"] == usuario, "nivel"].values[0]
+            nome = usuarios_df.loc[usuarios_df["usuario"] == usuario, "nome"].values[0]
+            
+            # Definir expiração
+            expiracao = datetime.now() + timedelta(hours=LOGIN_EXPIRY_HOURS)
+            
+            return True, nivel, nome, expiracao
     
-    return False
+    return False, None, None, None
 
-# Função para verificar se o usuário está autenticado
+# Função para verificar se o usuário está logado
 def verificar_autenticacao():
-    """Verifica se o usuário está autenticado na sessão atual"""
-    if 'autenticado' in st.session_state and st.session_state['autenticado']:
-        return True
+    # Verificar primeiro no estado persistente do Streamlit
+    if LOGIN_SESSION_VAR in st.session_state and LOGIN_EXPIRY_VAR in st.session_state:
+        # Verificar se o login expirou
+        if datetime.now() < st.session_state[LOGIN_EXPIRY_VAR]:
+            return True
     
     return False
 
-# Função para logout
+# Função para fazer logout
 def logout():
-    """Remove informações de autenticação da sessão"""
-    if 'autenticado' in st.session_state:
-        del st.session_state['autenticado']
+    # Importar a função de logout universal
+    from auth_wrapper import do_logout
+    do_logout()
     
-    if 'usuario' in st.session_state:
-        del st.session_state['usuario']
+    # Removendo também as variáveis padrão
+    if LOGIN_SESSION_VAR in st.session_state:
+        del st.session_state[LOGIN_SESSION_VAR]
     
-    if 'nome' in st.session_state:
-        del st.session_state['nome']
-    
-    if 'nivel' in st.session_state:
-        del st.session_state['nivel']
+    if LOGIN_EXPIRY_VAR in st.session_state:
+        del st.session_state[LOGIN_EXPIRY_VAR]
 
-# Função para exibir página de login
+# Página de login
 def mostrar_pagina_login():
-    """Exibe o formulário de login"""
-    st.title("Login")
-    
-    # Logo no centro
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    # Custom CSS para estilizar o logo
+    st.markdown("""
+    <style>
+        .logo-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .logo-text {
+            margin-left: 1rem;
+            font-size: 1.5rem;
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .stButton > button {
+            width: 100%;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Header com logo
+    col1, col2 = st.columns([1, 3])
+    with col1:
         try:
-            st.image("assets/images/logo.png", width=200)
-        except:
-            st.write("Tertúlia Libras")
+            # Usar função para obter o caminho da logo
+            logo_path = get_logo_path()
+            st.image(logo_path, width=120)
+        except Exception as e:
+            st.warning(f"Erro ao carregar a logo: {e}")
+            st.image('assets/images/logo.svg', width=120)
+    with col2:
+        st.title("Sistema de Gestão Libras")
+
+    st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+    
+    st.subheader("Login")
     
     # Formulário de login
     with st.form("login_form"):
         usuario = st.text_input("Usuário")
         senha = st.text_input("Senha", type="password")
         
-        submitted = st.form_submit_button("Entrar")
+        submetido = st.form_submit_button("Entrar")
         
-        if submitted:
-            if verificar_login(usuario, senha):
-                st.success("Login realizado com sucesso!")
-                st.rerun()
+        if submetido:
+            if usuario and senha:
+                autenticado, nivel, nome, expiracao = verificar_login(usuario, senha)
+                
+                if autenticado:
+                    # Armazenar informações na sessão
+                    from auth_wrapper import set_authentication
+                    
+                    # Definir as variáveis padrão
+                    st.session_state[LOGIN_SESSION_VAR] = {
+                        "usuario": usuario,
+                        "nivel": nivel,
+                        "nome": nome
+                    }
+                    st.session_state[LOGIN_EXPIRY_VAR] = expiracao
+                    
+                    # Também usar o wrapper para garantir consistência
+                    set_authentication({
+                        "usuario": usuario,
+                        "nivel": nivel,
+                        "nome": nome
+                    }, expiracao)
+                    
+                    st.success(f"Bem-vindo, {nome}!")
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos")
             else:
-                st.error("Usuário ou senha incorretos.")
+                st.warning("Por favor, informe o usuário e a senha")
     
-    # Informações adicionais
-    st.info("Este é um sistema de gestão para a Tertúlia Libras. Para acessar, utilize suas credenciais.")
-    
-    # Créditos
-    st.markdown("---")
-    st.caption("© Tertúlia Libras - Todos os direitos reservados")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# Função para gerenciar usuários (apenas administradores)
+    # Rodapé
+    st.markdown("<div style='text-align: center; margin-top: 50px; opacity: 0.7;'>© 2025 Sistema de Gestão Libras</div>", unsafe_allow_html=True)
+
+# Função para gerenciar usuários (somente para admin)
 def pagina_gerenciar_usuarios():
-    """Exibe a página de gerenciamento de usuários (apenas para administradores)"""
-    if not verificar_autenticacao():
-        mostrar_pagina_login()
+    if not LOGIN_SESSION_VAR in st.session_state:
+        st.error("Acesso negado. Você não está logado.")
         return
     
-    # Verificar se é administrador
-    if st.session_state.get('nivel') != 'admin':
-        st.error("Acesso negado. Apenas administradores podem acessar esta página.")
+    # Verificar o nível de acesso sem mostrar na interface
+    nivel_acesso = st.session_state[LOGIN_SESSION_VAR]['nivel']
+    
+    # Verificar se é admin
+    if st.session_state[LOGIN_SESSION_VAR]["nivel"] != "admin":
+        st.error("Acesso negado. Você não tem permissão para gerenciar usuários.")
         return
+        
+    # Se chegou aqui, é admin
+    st.subheader("Gerenciar Usuários")
     
-    st.title("Gerenciar Usuários")
-    
-    # Carregar usuários
     usuarios_df = carregar_usuarios()
     
-    # Criar abas
-    tab_list, tab_new, tab_edit = st.tabs(["Lista de Usuários", "Novo Usuário", "Editar Usuário"])
+    # Criar novo usuário
+    with st.expander("Adicionar Novo Usuário"):
+        with st.form("novo_usuario_form"):
+            novo_usuario = st.text_input("Nome de Usuário")
+            nova_senha = st.text_input("Senha", type="password")
+            confirmar_senha = st.text_input("Confirmar Senha", type="password")
+            nome_completo = st.text_input("Nome Completo")
+            nivel = st.selectbox("Nível de Acesso", ["usuario", "admin"])
+            
+            submetido = st.form_submit_button("Adicionar Usuário")
+            
+            if submetido:
+                if not novo_usuario or not nova_senha or not nome_completo:
+                    st.warning("Todos os campos são obrigatórios")
+                elif nova_senha != confirmar_senha:
+                    st.error("As senhas não coincidem")
+                elif novo_usuario in usuarios_df["usuario"].values:
+                    st.error("Este nome de usuário já existe")
+                else:
+                    # Adicionar novo usuário
+                    novo_df = pd.DataFrame([{
+                        "usuario": novo_usuario,
+                        "senha_hash": hash_senha(nova_senha),
+                        "nome": nome_completo,
+                        "nivel": nivel
+                    }])
+                    
+                    usuarios_df = pd.concat([usuarios_df, novo_df], ignore_index=True)
+                    salvar_usuarios(usuarios_df)
+                    st.success("Usuário adicionado com sucesso!")
+                    st.rerun()
     
-    # Aba Lista de Usuários
-    with tab_list:
+    # Listar usuários
+    if not usuarios_df.empty:
         st.subheader("Usuários Cadastrados")
         
-        if not usuarios_df.empty:
-            # Ocultar hash da senha
-            display_df = usuarios_df.copy()
-            if 'password_hash' in display_df.columns:
-                display_df['password_hash'] = '********'
-            
-            st.dataframe(display_df)
-        else:
-            st.info("Nenhum usuário cadastrado.")
-    
-    # Aba Novo Usuário
-    with tab_new:
-        st.subheader("Cadastrar Novo Usuário")
+        # Criar cópia para exibição (sem mostrar hash)
+        usuarios_exibicao = usuarios_df[["usuario", "nome", "nivel"]].copy()
         
-        with st.form("new_user_form"):
-            username = st.text_input("Nome de usuário")
-            name = st.text_input("Nome completo")
-            password = st.text_input("Senha", type="password")
-            confirm_password = st.text_input("Confirmar senha", type="password")
-            
-            level = st.selectbox(
-                "Nível de acesso",
-                ["user", "admin"],
-                format_func=lambda x: "Administrador" if x == "admin" else "Usuário Comum"
-            )
-            
-            submitted = st.form_submit_button("Cadastrar")
-            
-            if submitted:
-                # Validação
-                if not username or not name or not password:
-                    st.error("Todos os campos são obrigatórios.")
-                elif password != confirm_password:
-                    st.error("As senhas não coincidem.")
-                else:
-                    # Verificar se usuário já existe
-                    if not usuarios_df.empty and username in usuarios_df['username'].values:
-                        st.error(f"Usuário '{username}' já existe.")
-                    else:
-                        # Criar novo usuário
-                        novo_usuario = {
-                            "username": username,
-                            "name": name,
-                            "password_hash": hash_senha(password),
-                            "level": level,
-                            "created_at": datetime.now().strftime("%Y-%m-%d")
-                        }
-                        
-                        # Adicionar ao DataFrame
-                        new_row = pd.DataFrame([novo_usuario])
-                        
-                        if usuarios_df.empty:
-                            usuarios_df = new_row
-                        else:
-                            usuarios_df = pd.concat([usuarios_df, new_row], ignore_index=True)
-                        
-                        # Salvar no CSV
-                        salvar_usuarios(usuarios_df)
-                        
-                        st.success(f"Usuário '{username}' cadastrado com sucesso!")
-    
-    # Aba Editar Usuário
-    with tab_edit:
-        st.subheader("Editar Usuário")
+        # Renomear colunas para exibição
+        usuarios_exibicao.columns = ["Usuário", "Nome", "Nível de Acesso"]
         
-        if not usuarios_df.empty:
-            # Selecionar usuário
-            selected_user = st.selectbox(
-                "Selecione o usuário",
-                usuarios_df['username'].tolist()
-            )
-            
-            # Obter dados do usuário
-            user_data = usuarios_df[usuarios_df['username'] == selected_user].iloc[0]
-            
-            with st.form("edit_user_form"):
-                # Nome completo
-                name = st.text_input("Nome completo", value=user_data['name'])
-                
-                # Senha (opcional)
-                st.write("Deixe em branco para manter a senha atual:")
-                password = st.text_input("Nova senha", type="password")
-                confirm_password = st.text_input("Confirmar nova senha", type="password")
-                
-                # Nível de acesso
-                level = st.selectbox(
-                    "Nível de acesso",
-                    ["user", "admin"],
-                    index=0 if user_data['level'] == "user" else 1,
-                    format_func=lambda x: "Administrador" if x == "admin" else "Usuário Comum"
+        st.dataframe(usuarios_exibicao, use_container_width=True)
+        
+        # Alterar senha
+        with st.expander("Alterar Senha de Usuário"):
+            with st.form("alterar_senha_form"):
+                usuario_selecionado = st.selectbox(
+                    "Selecione o Usuário",
+                    options=usuarios_df["usuario"].tolist()
                 )
                 
-                submitted = st.form_submit_button("Atualizar")
+                nova_senha = st.text_input("Nova Senha", type="password")
+                confirmar_senha = st.text_input("Confirmar Nova Senha", type="password")
                 
-                if submitted:
-                    # Validação
-                    if not name:
-                        st.error("O nome é obrigatório.")
-                    elif password and password != confirm_password:
-                        st.error("As senhas não coincidem.")
+                submetido = st.form_submit_button("Alterar Senha")
+                
+                if submetido:
+                    if not nova_senha:
+                        st.warning("Informe a nova senha")
+                    elif nova_senha != confirmar_senha:
+                        st.error("As senhas não coincidem")
                     else:
-                        # Atualizar usuário
-                        usuarios_df.loc[usuarios_df['username'] == selected_user, 'name'] = name
-                        usuarios_df.loc[usuarios_df['username'] == selected_user, 'level'] = level
-                        
-                        # Atualizar senha se fornecida
-                        if password:
-                            usuarios_df.loc[usuarios_df['username'] == selected_user, 'password_hash'] = hash_senha(password)
-                        
-                        # Salvar no CSV
+                        # Atualizar senha
+                        usuarios_df.loc[usuarios_df["usuario"] == usuario_selecionado, "senha_hash"] = hash_senha(nova_senha)
                         salvar_usuarios(usuarios_df)
-                        
-                        st.success(f"Usuário '{selected_user}' atualizado com sucesso!")
-            
-            # Excluir usuário
-            if st.button("Excluir Usuário", type="primary", help="Esta ação não pode ser desfeita!"):
-                # Não permitir excluir o último administrador
-                admin_count = len(usuarios_df[usuarios_df['level'] == 'admin'])
-                is_admin = user_data['level'] == 'admin'
+                        st.success("Senha alterada com sucesso!")
+        
+        # Remover usuário
+        with st.expander("Remover Usuário"):
+            with st.form("remover_usuario_form"):
+                usuario_remover = st.selectbox(
+                    "Selecione o Usuário para Remover",
+                    options=usuarios_df[usuarios_df["usuario"] != "admin"]["usuario"].tolist()
+                )
                 
-                if is_admin and admin_count <= 1:
-                    st.error("Não é possível excluir o último administrador.")
-                else:
-                    # Excluir usuário
-                    usuarios_df = usuarios_df[usuarios_df['username'] != selected_user]
-                    
-                    # Salvar no CSV
-                    salvar_usuarios(usuarios_df)
-                    
-                    st.success(f"Usuário '{selected_user}' excluído com sucesso!")
-                    st.rerun()
-        else:
-            st.info("Nenhum usuário cadastrado.")
+                st.warning("Esta ação não pode ser desfeita!")
+                confirmacao = st.checkbox("Confirmo que desejo remover este usuário")
+                
+                submetido = st.form_submit_button("Remover Usuário")
+                
+                if submetido:
+                    if not confirmacao:
+                        st.error("Você precisa confirmar a remoção")
+                    else:
+                        # Remover usuário do Supabase
+                        usuarios = load_users()
+                        user_id = None
+                        
+                        # Encontrar o ID do usuário
+                        for u in usuarios:
+                            if u.get("username") == usuario_remover:
+                                user_id = u.get("id")
+                                break
+                                
+                        if user_id:
+                            # Excluir usando a função do Supabase
+                            delete_user(user_id)
+                            
+                            # Atualizar lista local
+                            usuarios_df = usuarios_df[usuarios_df["usuario"] != usuario_remover]
+                            st.success("Usuário removido com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("Erro ao localizar o usuário no banco de dados.")
+
+if __name__ == "__main__":
+    mostrar_pagina_login()
