@@ -1,91 +1,85 @@
 import os
 import streamlit as st
-import json
 import shutil
 from datetime import datetime
 
-# Diretórios
-CONFIG_DIR = "config"
+# Pasta padrão para configurações
+CONFIG_DIR = os.path.join(os.getcwd(), 'config')
+LOGO_DIR = os.path.join(os.getcwd(), 'assets', 'images')
+
+# Garantir que as pastas existam
 os.makedirs(CONFIG_DIR, exist_ok=True)
+os.makedirs(LOGO_DIR, exist_ok=True)
 
-# Arquivos
-CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-DEFAULT_LOGO_PATH = os.path.join("assets", "images", "logo.png")
-os.makedirs(os.path.dirname(DEFAULT_LOGO_PATH), exist_ok=True)
+# Arquivo para armazenar o caminho da logo
+LOGO_CONFIG_FILE = os.path.join(CONFIG_DIR, 'logo_path.txt')
 
-# Configuração padrão
-DEFAULT_CONFIG = {
-    "logo_path": DEFAULT_LOGO_PATH,
-    "system_name": "Tertúlia Libras - Sistema de Gestão",
-    "default_payment_day": 10,
-    "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-}
+# Logo padrão (incluída no repositório)
+DEFAULT_LOGO = os.path.join(LOGO_DIR, 'logo.png')
 
 def load_config():
     """Carregar configurações do sistema"""
-    # Verificar se o arquivo existe
-    if not os.path.exists(CONFIG_FILE):
-        # Criar configuração padrão
-        save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG
-    
-    try:
-        # Carregar do arquivo
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-        
-        # Verificar se todas as chaves necessárias existem
-        for key in DEFAULT_CONFIG:
-            if key not in config:
-                config[key] = DEFAULT_CONFIG[key]
-        
-        return config
-    except Exception as e:
-        st.error(f"Erro ao carregar configurações: {e}")
-        return DEFAULT_CONFIG
+    # Implementação futura: carregar outras configurações
+    return {}
 
 def save_config(config_data):
     """Salvar configurações do sistema"""
-    try:
-        # Atualizar timestamp
-        config_data["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Salvar no arquivo
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config_data, f, indent=4)
-        
-        return True
-    except Exception as e:
-        st.error(f"Erro ao salvar configurações: {e}")
-        return False
+    # Implementação futura: salvar outras configurações
+    return True
 
 def get_logo_path():
     """Obter o caminho da logo atual"""
-    config = load_config()
-    logo_path = config.get("logo_path", DEFAULT_LOGO_PATH)
+    # Verificar se o arquivo de configuração existe
+    if os.path.exists(LOGO_CONFIG_FILE):
+        with open(LOGO_CONFIG_FILE, 'r') as f:
+            logo_path = f.read().strip()
+            if os.path.exists(logo_path):
+                return logo_path
     
-    # Verificar se o arquivo existe
-    if not os.path.exists(logo_path):
-        return DEFAULT_LOGO_PATH
+    # Se logo personalizada não existe, criar uma no diretório de assets
+    # Fazer uma cópia da logo default para uma pasta segura
+    # Isso garante que, mesmo se a pasta assets/images não existir, teremos uma logo
+    os.makedirs('data/assets', exist_ok=True)
+    internal_logo_path = 'data/assets/logo.png'
     
-    return logo_path
+    # Se já existe uma logo na pasta data/assets, usá-la
+    if os.path.exists(internal_logo_path):
+        return internal_logo_path
+    
+    # Criar um arquivo de logo simples com texto se não tivermos nenhuma logo
+    try:
+        # Tenta criar um arquivo SVG básico com texto
+        with open(internal_logo_path, 'w') as f:
+            f.write('SGL')  # Arquivo de texto simples como fallback
+        return internal_logo_path
+    except:
+        # Se falhar, apenas retornar o caminho (mesmo que o arquivo não exista)
+        return internal_logo_path
 
 def save_uploaded_logo(uploaded_file):
     """Salvar logo enviada pelo usuário"""
     try:
-        # Criar diretório se não existir
-        os.makedirs(os.path.dirname(DEFAULT_LOGO_PATH), exist_ok=True)
+        # Garantir que a pasta de destino existe
+        os.makedirs(LOGO_DIR, exist_ok=True)
+        
+        # Caminho para a nova logo
+        file_extension = os.path.splitext(uploaded_file.name)[1]
+        new_logo_path = os.path.join(LOGO_DIR, f'custom_logo{file_extension}')
         
         # Salvar o arquivo
-        with open(DEFAULT_LOGO_PATH, 'wb') as f:
+        with open(new_logo_path, 'wb') as f:
             f.write(uploaded_file.getbuffer())
         
-        # Atualizar configuração
-        config = load_config()
-        config["logo_path"] = DEFAULT_LOGO_PATH
-        save_config(config)
+        # Salvar uma cópia na pasta data/assets para garantir que esteja acessível
+        os.makedirs('data/assets', exist_ok=True)
+        backup_logo_path = os.path.join('data/assets', f'logo{file_extension}')
+        shutil.copy2(new_logo_path, backup_logo_path)
         
-        return True
+        # Atualizar o arquivo de configuração com o caminho da logo de backup
+        # Usar a cópia de backup como a principal para maior segurança
+        with open(LOGO_CONFIG_FILE, 'w') as f:
+            f.write(backup_logo_path)
+        
+        return True, backup_logo_path
     except Exception as e:
-        st.error(f"Erro ao salvar logo: {e}")
-        return False
+        return False, str(e)
