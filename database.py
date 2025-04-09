@@ -21,7 +21,7 @@ def ensure_files_exist():
     # Estudantes
     if not os.path.exists(STUDENTS_FILE):
         pd.DataFrame(columns=[
-            'phone', 'name', 'cpf', 'email', 'address', 'enrollment_date', 
+            'phone', 'name', 'cpf', 'enrollment_date', 
             'monthly_fee', 'course_type', 'status', 'comments', 'registration_origin',
             'payment_day', 'payment_plan'
         ]).to_csv(STUDENTS_FILE, index=False)
