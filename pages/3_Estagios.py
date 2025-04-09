@@ -1,458 +1,413 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import os
+from utils import (
+    load_students_data, 
+    load_internships_data,
+    save_internships_data,
+    format_phone,
+    get_student_internship_hours,
+    get_student_internship_topics
+)
+from login import verificar_autenticacao, mostrar_pagina_login
 
-# Tentar importar login normalmente primeiro
-try:
-    from login import verificar_autenticacao, mostrar_pagina_login
-except ImportError:
-    # Se não conseguir, tentar o fallback
-    try:
-        from login_fallback import verificar_autenticacao, mostrar_pagina_login
-    except ImportError:
-        st.error("Não foi possível importar o módulo de login.")
-        st.stop()
+# Importar verificação de autenticação universal
+from auth_wrapper import verify_authentication
 
 # Verificar autenticação
-if not verificar_autenticacao():
-    mostrar_pagina_login()
-else:
-    # Importar utils com tratamento de erro
+verify_authentication()
+
+# Custom CSS to style the logo
+st.markdown("""
+<style>
+    .logo-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .logo-text {
+        margin-left: 1rem;
+        font-size: 1.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Header with logo
+col1, col2 = st.columns([1, 3])
+with col1:
     try:
-        from utils import (
-            load_students_data,
-            load_internships_data,
-            save_internships_data,
-            get_student_internship_hours
-        )
-    except ImportError as e:
-        st.error(f"Erro ao importar módulos: {e}")
-        st.info("Esta funcionalidade requer conexão com o banco de dados.")
-        st.stop()
-    
+        # Usar função para obter o caminho da logo
+        from config import get_logo_path
+        logo_path = get_logo_path()
+        st.image(logo_path, width=120)
+    except Exception as e:
+        st.warning(f"Erro ao carregar a logo: {e}")
+        st.image('assets/images/logo.svg', width=120)
+with col2:
     st.title("Gerenciamento de Estágios")
+
+# Load data
+students_df = load_students_data()
+internships_df = load_internships_data()
+
+# Create tabs for different operations
+tab1, tab2, tab3 = st.tabs(["Registrar Estágio", "Listar Estágios", "Editar Estágios"])
+
+# Helper function to format student list display
+def format_students(students_str):
+    if not students_str:
+        return ""
     
-    # Carregar dados
-    students_df = load_students_data()
-    internships_df = load_internships_data()
+    students_list = students_str.split(',')
+    if len(students_list) > 3:
+        return f"{', '.join(students_list[:3])} (+{len(students_list) - 3})"
+    return students_str
+
+with tab1:
+    st.subheader("Registrar Novo Estágio")
     
-    # Verificar se há alunos cadastrados
-    if students_df.empty:
-        st.warning("Não há alunos cadastrados.")
-        st.stop()
-    
-    # Criar abas
-    tab_list, tab_new, tab_manage = st.tabs(["Lista de Estágios", "Novo Estágio", "Gerenciar Estágio"])
-    
-    # Função auxiliar para formatar lista de alunos
-    def format_students(students_str):
-        """Converte uma string de telefones para lista de alunos"""
-        if not students_str:
-            return []
+    if students_df is not None and not students_df.empty:
+        # Filter for active students only
+        active_students = students_df[students_df['status'] == 'active']
         
-        # Separar telefones
-        phones = students_str.split(',')
-        
-        # Formatar nomes dos alunos
-        student_list = []
-        for phone in phones:
-            phone = phone.strip()
-            if phone and 'name' in students_df.columns and 'phone' in students_df.columns:
-                student_name = students_df[students_df['phone'] == phone]['name'].values
-                if len(student_name) > 0:
-                    student_list.append(f"{student_name[0]} ({phone})")
-                else:
-                    student_list.append(phone)
-        
-        return student_list
+        if not active_students.empty:
+            with st.form("internship_form"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Allow selecting multiple students for group internships
+                    selected_students = st.multiselect(
+                        "Selecione os alunos participantes:",
+                        options=active_students['phone'].tolist(),
+                        format_func=lambda x: f"{format_phone(x)} - {active_students[active_students['phone'] == x]['name'].values[0]}"
+                    )
+                    
+                    internship_date = st.date_input("Data do Estágio", datetime.now())
+                    hours = st.number_input("Horas de Estágio", min_value=1, value=4, step=1)
+                
+                with col2:
+                    topic = st.text_input("Tema/Assunto", help="O assunto principal abordado neste estágio")
+                    location = st.text_input("Local do Estágio", help="Onde o estágio foi realizado")
+                    supervisor = st.text_input("Supervisor", help="Nome do supervisor responsável")
+                    
+                notes = st.text_area("Observações", height=100)
+                
+                submitted = st.form_submit_button("Registrar Estágio")
+                
+                if submitted:
+                    if not selected_students:
+                        st.error("Por favor, selecione pelo menos um aluno.")
+                    elif not topic:
+                        st.error("O tema do estágio é obrigatório.")
+                    else:
+                        # Create new internship record
+                        internship_id = f"INT-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                        
+                        # Create a comma-separated list of student phones
+                        students_str = ','.join(selected_students)
+                        
+                        new_internship = {
+                            'internship_id': internship_id,
+                            'students': students_str,
+                            'date': internship_date.strftime('%Y-%m-%d'),
+                            'hours': hours,
+                            'topic': topic,
+                            'location': location,
+                            'supervisor': supervisor,
+                            'notes': notes,
+                            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                        
+                        # Add to dataframe
+                        if internships_df is None or internships_df.empty:
+                            internships_df = pd.DataFrame([new_internship])
+                        else:
+                            internships_df = pd.concat([internships_df, pd.DataFrame([new_internship])], ignore_index=True)
+                        
+                        # Save data
+                        save_internships_data(internships_df)
+                        
+                        st.success(f"Estágio registrado com sucesso! ID: {internship_id}")
+        else:
+            st.warning("Não há alunos ativos no momento.")
+    else:
+        st.info("Não há alunos cadastrados ainda.")
+
+with tab2:
+    st.subheader("Lista de Estágios")
     
-    # Aba Lista de Estágios
-    with tab_list:
-        st.subheader("Lista de Estágios Registrados")
+    # Filter options
+    st.write("Filtros:")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        date_range = st.date_input(
+            "Período (Início e Fim)",
+            value=[
+                datetime.now().replace(day=1),  # First day of current month
+                datetime.now()  # Today
+            ],
+            key="date_range_filter"
+        )
+    
+    with col2:
+        if students_df is not None and not students_df.empty:
+            student_options = ["Todos"] + students_df['phone'].tolist()
+            
+            student_filter = st.selectbox(
+                "Filtrar por Aluno",
+                options=student_options,
+                format_func=lambda x: "Todos" if x == "Todos" else f"{format_phone(x)} - {students_df[students_df['phone'] == x]['name'].values[0]}"
+            )
+        else:
+            student_filter = "Todos"
+    
+    if internships_df is not None and not internships_df.empty:
+        # Apply filters
+        filtered_df = internships_df.copy()
         
-        # Filtro de aluno
-        all_students = ["Todos"] + students_df['name'].tolist() if 'name' in students_df.columns else ["Todos"]
-        student_filter = st.selectbox(
-            "Filtrar por aluno:",
-            all_students,
-            key="internship_list_student"
+        # Date filter
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            filtered_df = filtered_df[
+                (pd.to_datetime(filtered_df['date']) >= pd.to_datetime(start_date)) & 
+                (pd.to_datetime(filtered_df['date']) <= pd.to_datetime(end_date))
+            ]
+        
+        # Student filter
+        if student_filter and student_filter != "Todos":
+            # Filter internships where the selected student is in the comma-separated list
+            filtered_df = filtered_df[filtered_df['students'].str.contains(student_filter, na=False)]
+        
+        # Display dataframe if not empty
+        if not filtered_df.empty:
+            # Create a copy with formatted data for display
+            display_df = filtered_df.copy()
+            
+            # Format dates to Brazilian format (dd/mm/yyyy)
+            display_df['date'] = pd.to_datetime(display_df['date']).dt.strftime('%d/%m/%Y')
+            
+            # Format student list with names instead of phone numbers
+            if students_df is not None and not students_df.empty:
+                # Create a map of phone to name
+                phone_to_name = dict(zip(students_df['phone'], students_df['name']))
+                
+                # Function to convert phone list to name list
+                def phone_list_to_names(phones_str):
+                    if not phones_str:
+                        return ""
+                    
+                    phones = phones_str.split(',')
+                    names = [phone_to_name.get(phone, phone) for phone in phones]
+                    
+                    # Truncate if too many names
+                    if len(names) > 3:
+                        return f"{', '.join(names[:3])} (+{len(names) - 3})"
+                    return ', '.join(names)
+                
+                display_df['students_display'] = display_df['students'].apply(phone_list_to_names)
+            else:
+                display_df['students_display'] = display_df['students'].apply(format_students)
+            
+            # Select and reorder columns for display
+            columns_to_display = [
+                'internship_id', 'date', 'students_display', 'hours', 
+                'topic', 'location', 'supervisor'
+            ]
+            
+            # Remove columns that might not exist in older data
+            columns_to_display = [col for col in columns_to_display if col in display_df.columns]
+            
+            # Custom column labels
+            column_labels = {
+                'internship_id': 'ID',
+                'date': 'Data',
+                'students_display': 'Alunos',
+                'hours': 'Horas',
+                'topic': 'Tema',
+                'location': 'Local',
+                'supervisor': 'Supervisor'
+            }
+            
+            # Display the dataframe
+            st.dataframe(
+                display_df[columns_to_display], 
+                use_container_width=True,
+                column_config={col: column_labels.get(col, col) for col in columns_to_display}
+            )
+            
+            # Calculate summary
+            total_internships = len(filtered_df)
+            total_hours = filtered_df['hours'].sum()
+            
+            if student_filter and student_filter != "Todos":
+                # For a specific student, show their total hours
+                student_name = students_df[students_df['phone'] == student_filter]['name'].values[0]
+                st.info(f"""
+                **Resumo para {student_name}:**
+                * Total de estágios: {total_internships}
+                * Total de horas: {total_hours}
+                """)
+            else:
+                # For all students, show aggregate stats
+                st.info(f"""
+                **Resumo Geral:**
+                * Total de estágios: {total_internships}
+                * Total de horas: {total_hours}
+                """)
+            
+            # Export option
+            if st.button("Exportar Lista (CSV)"):
+                export_df = filtered_df.copy()
+                # Convert to CSV
+                csv = export_df.to_csv(index=False).encode('utf-8')
+                
+                # Create download button
+                st.download_button(
+                    "Baixar CSV",
+                    csv,
+                    "estagios.csv",
+                    "text/csv",
+                    key='download-csv-internships'
+                )
+        else:
+            st.warning("Nenhum estágio encontrado com os filtros selecionados.")
+    else:
+        st.info("Não há estágios registrados ainda.")
+
+with tab3:
+    st.subheader("Editar Estágios")
+    
+    if internships_df is not None and not internships_df.empty:
+        # Select internship to edit
+        internship_ids = internships_df['internship_id'].tolist()
+        
+        # Format dates for better display
+        internship_dates = pd.to_datetime(internships_df['date']).dt.strftime('%d/%m/%Y').tolist()
+        
+        # Format description for better readability
+        internship_descriptions = [
+            f"{id_} - {date} - {topic}"
+            for id_, date, topic in zip(
+                internship_ids, 
+                internship_dates, 
+                internships_df['topic'].tolist()
+            )
+        ]
+        
+        # Map descriptions back to IDs
+        description_to_id = dict(zip(internship_descriptions, internship_ids))
+        
+        selected_description = st.selectbox(
+            "Selecione o estágio para editar:",
+            options=internship_descriptions
         )
         
-        # Filtrar estágios
-        if not internships_df.empty:
-            # Aplicar filtro de aluno
-            if student_filter != "Todos" and 'phone' in internships_df.columns:
-                # Obter telefone do aluno
-                if 'name' in students_df.columns and 'phone' in students_df.columns:
-                    student_phone = students_df[students_df['name'] == student_filter]['phone'].iloc[0]
-                    filtered_df = internships_df[internships_df['phone'] == student_phone]
-                else:
-                    filtered_df = internships_df
-                    st.warning("Não foi possível filtrar por aluno (dados incompatíveis).")
-            else:
-                filtered_df = internships_df
+        selected_id = description_to_id[selected_description]
+        
+        if selected_id:
+            # Get selected internship data
+            internship = internships_df[internships_df['internship_id'] == selected_id].iloc[0]
             
-            # Mostrar dados
-            if not filtered_df.empty:
-                # Juntar com dados dos alunos para exibir nome
-                if 'phone' in filtered_df.columns and 'phone' in students_df.columns and 'name' in students_df.columns:
-                    display_df = pd.merge(
-                        filtered_df,
-                        students_df[['phone', 'name']],
-                        on='phone',
-                        how='left'
+            # Get list of students in this internship
+            student_phones = internship['students'].split(',') if pd.notna(internship['students']) else []
+            
+            # Create edit form
+            with st.form("edit_internship_form"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if students_df is not None and not students_df.empty:
+                        # Allow updating student list
+                        updated_students = st.multiselect(
+                            "Alunos Participantes:",
+                            options=students_df['phone'].tolist(),
+                            default=student_phones,
+                            format_func=lambda x: f"{format_phone(x)} - {students_df[students_df['phone'] == x]['name'].values[0]}"
+                        )
+                    else:
+                        updated_students = student_phones
+                    
+                    internship_date = st.date_input(
+                        "Data do Estágio", 
+                        pd.to_datetime(internship['date']).date() if pd.notna(internship['date']) else datetime.now()
                     )
-                else:
-                    display_df = filtered_df
-                
-                # Ordenar por data
-                if 'date' in display_df.columns:
-                    display_df = display_df.sort_values('date', ascending=False)
-                
-                # Colunas a exibir
-                if 'name' in display_df.columns:
-                    display_cols = ['name', 'date', 'topic', 'hours', 'location']
-                else:
-                    display_cols = ['phone', 'date', 'topic', 'hours', 'location']
-                
-                # Verificar se todas as colunas existem
-                display_cols = [col for col in display_cols if col in display_df.columns]
-                
-                # Preparar dados para exibição
-                display_view = display_df[display_cols].copy()
-                
-                st.dataframe(display_view, use_container_width=True)
-                
-                # Mostrar total de horas de estágio
-                if 'hours' in filtered_df.columns:
-                    total_hours = filtered_df['hours'].sum()
-                    st.success(f"Total de horas de estágio: {total_hours}h")
-                
-                # Se filtrado por aluno, mostrar detalhes
-                if student_filter != "Todos" and 'hours' in filtered_df.columns:
-                    st.subheader(f"Detalhes de estágio para {student_filter}")
                     
-                    # Agrupar por tópico
-                    if 'topic' in filtered_df.columns:
-                        topic_hours = filtered_df.groupby('topic')['hours'].sum().reset_index()
+                    hours = st.number_input(
+                        "Horas de Estágio", 
+                        min_value=1, 
+                        value=int(internship['hours']), 
+                        step=1
+                    )
+                
+                with col2:
+                    topic = st.text_input(
+                        "Tema/Assunto", 
+                        value=internship['topic'] if pd.notna(internship['topic']) else ""
+                    )
+                    
+                    location = st.text_input(
+                        "Local do Estágio", 
+                        value=internship['location'] if pd.notna(internship['location']) else ""
+                    )
+                    
+                    supervisor = st.text_input(
+                        "Supervisor", 
+                        value=internship['supervisor'] if pd.notna(internship['supervisor']) else ""
+                    )
+                
+                notes = st.text_area(
+                    "Observações", 
+                    value=internship['notes'] if pd.notna(internship['notes']) else "", 
+                    height=100
+                )
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    update_button = st.form_submit_button("Atualizar Dados")
+                
+                with col2:
+                    delete_button = st.form_submit_button(
+                        "Excluir Estágio", 
+                        type="primary", 
+                        use_container_width=True,
+                        help="Atenção: Esta ação não pode ser desfeita!"
+                    )
+                
+                if update_button:
+                    # Update internship record
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'date'] = internship_date.strftime('%Y-%m-%d')
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'hours'] = hours
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'topic'] = topic
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'location'] = location
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'supervisor'] = supervisor
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'notes'] = notes
+                    
+                    # Update student list (comma-separated)
+                    students_str = ','.join(updated_students)
+                    internships_df.loc[internships_df['internship_id'] == selected_id, 'students'] = students_str
+                    
+                    # Save updated data
+                    save_internships_data(internships_df)
+                    
+                    st.success("Dados do estágio atualizados com sucesso!")
+                
+                if delete_button:
+                    # Confirmation for deletion
+                    confirmation = st.checkbox("Confirmar exclusão do estágio", key="confirm_delete_internship")
+                    
+                    if confirmation:
+                        # Remove internship from dataframe
+                        internships_df = internships_df[internships_df['internship_id'] != selected_id]
                         
-                        # Mostrar horas por tópico
-                        st.write("Horas por tópico:")
-                        for _, row in topic_hours.iterrows():
-                            st.info(f"{row['topic']}: {row['hours']}h")
-            else:
-                st.info("Nenhum estágio encontrado com os filtros selecionados.")
-        else:
-            st.info("Nenhum estágio registrado.")
-    
-    # Aba Novo Estágio
-    with tab_new:
-        st.subheader("Registrar Novo Estágio")
-        
-        with st.form("new_internship_form"):
-            # Selecionar aluno
-            student_name = st.selectbox(
-                "Aluno:",
-                students_df['name'].tolist() if 'name' in students_df.columns else [],
-                key="new_internship_student"
-            )
-            
-            # Obter telefone do aluno selecionado
-            if 'name' in students_df.columns and 'phone' in students_df.columns:
-                student_phone = students_df[students_df['name'] == student_name]['phone'].iloc[0]
-            else:
-                student_phone = ""
-                st.warning("Não foi possível obter o telefone do aluno.")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Data do estágio
-                internship_date = st.date_input(
-                    "Data do estágio",
-                    datetime.now().date(),
-                    key="new_internship_date"
-                )
-                
-                # Tópico
-                topic = st.selectbox(
-                    "Tópico do estágio",
-                    [
-                        "Tradução consecutiva",
-                        "Tradução simultânea",
-                        "Interpretação em conferência",
-                        "Interpretação educacional",
-                        "Consultoria em acessibilidade",
-                        "Preparação de materiais",
-                        "Outro"
-                    ],
-                    key="new_internship_topic"
-                )
-                
-                if topic == "Outro":
-                    topic = st.text_input("Especifique o tópico:", key="new_internship_topic_other")
-            
-            with col2:
-                # Horas
-                hours = st.number_input(
-                    "Horas de estágio",
-                    min_value=0.5,
-                    step=0.5,
-                    value=2.0,
-                    key="new_internship_hours"
-                )
-                
-                # Local
-                location = st.text_input("Local do estágio", key="new_internship_location")
-                
-                # Supervisor
-                supervisor = st.text_input("Supervisor", key="new_internship_supervisor")
-            
-            # Descrição da atividade
-            description = st.text_area("Descrição da atividade", key="new_internship_description")
-            
-            # Alunos participantes (multi-select)
-            st.write("Selecione alunos adicionais que participaram deste estágio (opcional):")
-            
-            # Filtrar para não mostrar o aluno principal
-            other_students = students_df[students_df['phone'] != student_phone] if not students_df.empty and 'phone' in students_df.columns else pd.DataFrame()
-            
-            selected_students = []
-            if not other_students.empty and 'name' in other_students.columns and 'phone' in other_students.columns:
-                # Criar opções de alunos com nomes
-                student_options = {row['name']: row['phone'] for _, row in other_students.iterrows()}
-                
-                # Checkbox para cada aluno
-                columns = st.columns(3)
-                col_idx = 0
-                
-                for name, phone in student_options.items():
-                    with columns[col_idx]:
-                        if st.checkbox(name, key=f"student_{phone}"):
-                            selected_students.append(phone)
-                    
-                    col_idx = (col_idx + 1) % 3
-            
-            submitted = st.form_submit_button("Registrar")
-            
-            if submitted:
-                # Validação de dados
-                if not student_phone:
-                    st.error("Selecione um aluno válido.")
-                elif not topic:
-                    st.error("Informe o tópico do estágio.")
-                elif hours <= 0:
-                    st.error("A carga horária deve ser maior que zero.")
-                else:
-                    # Preparar dados para o aluno principal
-                    new_internship = {
-                        "phone": student_phone,
-                        "date": internship_date.strftime("%Y-%m-%d"),
-                        "topic": topic,
-                        "hours": hours,
-                        "location": location,
-                        "supervisor": supervisor,
-                        "description": description,
-                        "students": ",".join([student_phone] + selected_students) if selected_students else student_phone
-                    }
-                    
-                    # Adicionar ao DataFrame
-                    new_row = pd.DataFrame([new_internship])
-                    
-                    # Se o DataFrame estiver vazio, criar um novo
-                    if internships_df.empty:
-                        internships_df = new_row
-                    else:
-                        internships_df = pd.concat([internships_df, new_row], ignore_index=True)
-                    
-                    # Se houver alunos adicionais, criar registros para eles também
-                    for additional_phone in selected_students:
-                        additional_internship = new_internship.copy()
-                        additional_internship["phone"] = additional_phone
-                        
-                        additional_row = pd.DataFrame([additional_internship])
-                        internships_df = pd.concat([internships_df, additional_row], ignore_index=True)
-                    
-                    # Salvar dados
-                    try:
+                        # Save updated data
                         save_internships_data(internships_df)
                         
-                        if selected_students:
-                            total_students = len(selected_students) + 1
-                            st.success(f"Estágio registrado com sucesso para {total_students} alunos!")
-                        else:
-                            st.success(f"Estágio registrado com sucesso para {student_name}!")
-                    except Exception as e:
-                        st.error(f"Erro ao salvar dados: {e}")
-    
-    # Aba Gerenciar Estágio
-    with tab_manage:
-        st.subheader("Gerenciar Estágio")
-        
-        if not internships_df.empty:
-            # Selecionar aluno primeiro
-            student_filter = st.selectbox(
-                "Selecione o aluno:",
-                students_df['name'].tolist() if 'name' in students_df.columns else [],
-                key="manage_internship_student"
-            )
-            
-            # Obter telefone do aluno selecionado
-            if 'name' in students_df.columns and 'phone' in students_df.columns:
-                student_phone = students_df[students_df['name'] == student_filter]['phone'].iloc[0]
-            else:
-                student_phone = ""
-                st.warning("Não foi possível obter o telefone do aluno.")
-            
-            # Filtrar estágios do aluno
-            student_internships = internships_df[internships_df['phone'] == student_phone].copy() if student_phone else pd.DataFrame()
-            
-            if not student_internships.empty:
-                # Ordenar por data
-                if 'date' in student_internships.columns:
-                    student_internships = student_internships.sort_values('date', ascending=False)
-                
-                # Preparar lista de estágios para seleção
-                internship_list = []
-                for idx, row in student_internships.iterrows():
-                    internship_id = row.get('id', None)
-                    internship_date = row.get('date', '')
-                    topic = row.get('topic', '')
-                    hours = row.get('hours', 0)
-                    
-                    # Formatar texto para seleção
-                    internship_text = f"{internship_date} - {topic} - {hours}h"
-                    
-                    internship_list.append((internship_text, internship_id or idx))
-                
-                # Selecionar estágio
-                selected_internship = st.selectbox(
-                    "Selecione o estágio:",
-                    [text for text, _ in internship_list],
-                    key="manage_internship_select"
-                )
-                
-                # Obter ID do estágio selecionado
-                selected_idx = [text for text, _ in internship_list].index(selected_internship)
-                internship_id = internship_list[selected_idx][1]
-                
-                # Obter dados do estágio selecionado
-                if isinstance(internship_id, int) and not isinstance(internship_id, bool):
-                    internship_data = student_internships.iloc[internship_id]
-                else:
-                    internship_data = student_internships[student_internships['id'] == internship_id].iloc[0]
-                
-                # Exibir formulário de edição
-                with st.form("edit_internship_form"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Data do estágio
-                        internship_date = st.date_input(
-                            "Data do estágio",
-                            datetime.strptime(internship_data.get('date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date(),
-                            key="edit_internship_date"
-                        )
-                        
-                        # Tópico
-                        topic_options = [
-                            "Tradução consecutiva",
-                            "Tradução simultânea",
-                            "Interpretação em conferência",
-                            "Interpretação educacional",
-                            "Consultoria em acessibilidade",
-                            "Preparação de materiais",
-                            "Outro"
-                        ]
-                        
-                        current_topic = internship_data.get('topic', '')
-                        topic_index = topic_options.index(current_topic) if current_topic in topic_options else len(topic_options) - 1
-                        
-                        topic = st.selectbox(
-                            "Tópico do estágio",
-                            topic_options,
-                            index=topic_index,
-                            key="edit_internship_topic"
-                        )
-                        
-                        if topic == "Outro" or topic_index == len(topic_options) - 1:
-                            topic = st.text_input("Especifique o tópico:", value=current_topic, key="edit_internship_topic_other")
-                    
-                    with col2:
-                        # Horas
-                        hours = st.number_input(
-                            "Horas de estágio",
-                            min_value=0.5,
-                            step=0.5,
-                            value=float(internship_data.get('hours', 2.0)),
-                            key="edit_internship_hours"
-                        )
-                        
-                        # Local
-                        location = st.text_input("Local do estágio", value=internship_data.get('location', ''), key="edit_internship_location")
-                        
-                        # Supervisor
-                        supervisor = st.text_input("Supervisor", value=internship_data.get('supervisor', ''), key="edit_internship_supervisor")
-                    
-                    # Descrição da atividade
-                    description = st.text_area("Descrição da atividade", value=internship_data.get('description', ''), key="edit_internship_description")
-                    
-                    # Alunos participantes
-                    if 'students' in internship_data:
-                        st.write("Alunos participantes:")
-                        students_list = format_students(internship_data['students'])
-                        for student in students_list:
-                            st.info(student)
-                    
-                    submitted = st.form_submit_button("Atualizar")
-                    
-                    if submitted:
-                        # Validação de dados
-                        if not topic:
-                            st.error("Informe o tópico do estágio.")
-                        elif hours <= 0:
-                            st.error("A carga horária deve ser maior que zero.")
-                        else:
-                            # Preparar dados
-                            updated_internship = internship_data.copy()
-                            updated_internship.update({
-                                "date": internship_date.strftime("%Y-%m-%d"),
-                                "topic": topic,
-                                "hours": hours,
-                                "location": location,
-                                "supervisor": supervisor,
-                                "description": description
-                            })
-                            
-                            # Atualizar no DataFrame
-                            if 'id' in internship_data and internship_data['id']:
-                                internships_df.loc[internships_df['id'] == internship_data['id']] = updated_internship
-                            else:
-                                internships_df.iloc[internship_id] = updated_internship
-                            
-                            # Salvar dados
-                            try:
-                                save_internships_data(internships_df)
-                                st.success(f"Estágio atualizado com sucesso!")
-                            except Exception as e:
-                                st.error(f"Erro ao salvar dados: {e}")
-                
-                # Excluir estágio
-                if st.button("Excluir Estágio", type="primary", help="Cuidado! Esta ação não pode ser desfeita.", key="delete_internship"):
-                    # Excluir do DataFrame
-                    if 'id' in internship_data and internship_data['id']:
-                        internships_df = internships_df[internships_df['id'] != internship_data['id']]
-                    else:
-                        internships_df = internships_df.drop(internship_id)
-                    
-                    # Salvar dados
-                    try:
-                        save_internships_data(internships_df)
-                        st.success(f"Estágio excluído com sucesso!")
+                        st.success("Estágio excluído com sucesso!")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar dados: {e}")
-            else:
-                st.info(f"Não há estágios registrados para este aluno.")
-        else:
-            st.info("Nenhum estágio registrado.")
+                    else:
+                        st.info("Marque a caixa de confirmação para excluir o estágio.")
+    else:
+        st.info("Não há estágios registrados ainda.")
