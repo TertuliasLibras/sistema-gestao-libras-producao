@@ -42,8 +42,12 @@ with col1:
         logo_path = get_logo_path()
         st.image(logo_path, width=120)
     except Exception as e:
-        st.warning(f"Erro ao carregar a logo: {e}")
-        st.image('assets/images/logo.svg', width=120)
+        # Tentar diretamente o caminho relativo
+        try:
+            st.image('./assets/images/logo.svg', width=120)
+        except:
+            # Se falhar, não mostrar logo
+            st.warning(f"Logo não pôde ser carregada. App continuará funcionando normalmente.")
 with col2:
     st.title("Gerenciamento de Estágios")
 
