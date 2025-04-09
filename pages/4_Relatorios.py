@@ -86,8 +86,12 @@ with col1:
         logo_path = get_logo_path()
         st.image(logo_path, width=120)
     except Exception as e:
-        st.warning(f"Erro ao carregar a logo: {e}")
-        st.image('assets/images/logo.svg', width=120)
+        # Tentar diretamente o caminho relativo
+        try:
+            st.image('./assets/images/logo.svg', width=120)
+        except:
+            # Se falhar, não mostrar logo
+            st.warning(f"Logo não pôde ser carregada. App continuará funcionando normalmente.")
 with col2:
     st.title("Relatórios e Análises")
 
@@ -908,4 +912,39 @@ with tab4:
             
             # Display the dataframe
             st.dataframe(
-                student
+                student_stats[columns_to_display], 
+                use_container_width=True,
+                column_config={col: column_labels.get(col, col) for col in columns_to_display}
+            )
+            
+            # Calculate summary statistics
+            avg_hours = student_stats['total_hours'].mean()
+            max_hours = student_stats['total_hours'].max()
+            min_hours = student_stats['total_hours'].min()
+            
+            st.markdown(f"""
+            **Resumo de Horas de Estágio:**
+            * Média de horas por aluno: {avg_hours:.1f} horas
+            * Máximo de horas por aluno: {max_hours} horas
+            * Mínimo de horas por aluno: {min_hours} horas
+            * Total de alunos com estágios: {len(student_stats)}
+            """)
+            
+            # Export option
+            if st.button("Exportar Dados de Estágio (CSV)"):
+                export_df = student_stats.copy()
+                # Convert to CSV
+                csv = export_df.to_csv(index=False).encode('utf-8')
+                
+                # Create download button
+                st.download_button(
+                    "Baixar CSV",
+                    csv,
+                    "horas_estagio.csv",
+                    "text/csv",
+                    key='download-csv-internship-hours'
+                )
+        else:
+            st.info("Não foi possível analisar a participação dos alunos nos estágios.")
+    else:
+        st.info("Dados insuficientes para gerar relatórios de estágios.")
