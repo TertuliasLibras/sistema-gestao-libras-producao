@@ -1,604 +1,450 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-import calendar
+import os
+from utils import (
+    load_students_data, 
+    load_payments_data,
+    save_payments_data,
+    format_currency,
+    format_phone
+)
+from login import verificar_autenticacao, mostrar_pagina_login
 
-# Tentar importar login normalmente primeiro
-try:
-    from login import verificar_autenticacao, mostrar_pagina_login
-except ImportError:
-    # Se não conseguir, tentar o fallback
-    try:
-        from login_fallback import verificar_autenticacao, mostrar_pagina_login
-    except ImportError:
-        st.error("Não foi possível importar o módulo de login.")
-        st.stop()
+# Importar verificação de autenticação universal
+from auth_wrapper import verify_authentication
 
 # Verificar autenticação
-if not verificar_autenticacao():
-    mostrar_pagina_login()
-else:
-    # Importar utils com tratamento de erro
+verify_authentication()
+
+# Custom CSS to style the logo
+st.markdown("""
+<style>
+    .logo-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .logo-text {
+        margin-left: 1rem;
+        font-size: 1.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Header with logo
+col1, col2 = st.columns([1, 3])
+with col1:
     try:
-        from utils import (
-            load_students_data,
-            load_payments_data,
-            save_payments_data,
-            format_currency
-        )
-    except ImportError as e:
-        st.error(f"Erro ao importar módulos: {e}")
-        st.info("Esta funcionalidade requer conexão com o banco de dados.")
-        st.stop()
-    
+        # Usar função para obter o caminho da logo
+        from config import get_logo_path
+        logo_path = get_logo_path()
+        st.image(logo_path, width=120)
+    except Exception as e:
+        st.warning(f"Erro ao carregar a logo: {e}")
+        st.image('assets/images/logo.svg', width=120)
+with col2:
     st.title("Gerenciamento de Pagamentos")
+
+# Load data
+students_df = load_students_data()
+payments_df = load_payments_data()
+
+# Create tabs for different operations
+tab1, tab2, tab3 = st.tabs(["Registrar Pagamentos", "Listar Pagamentos", "Editar Pagamentos"])
+
+with tab1:
+    st.subheader("Registrar Novo Pagamento")
     
-    # Carregar dados
-    students_df = load_students_data()
-    payments_df = load_payments_data()
-    
-    # Verificar se há dados
-    if students_df.empty:
-        st.warning("Não há alunos cadastrados.")
-        st.stop()
-    
-    # Criar abas
-    tab_list, tab_new, tab_manage = st.tabs(["Lista de Pagamentos", "Novo Pagamento", "Gerenciar Pagamento"])
-    
-    # Aba Lista de Pagamentos
-    with tab_list:
-        st.subheader("Lista de Pagamentos")
-        
-        # Filtros
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            # Filtro de status
-            status_filter = st.selectbox(
-                "Status:",
-                ["Todos", "Pendente", "Pago", "Atrasado"],
-                index=0
-            )
-        
-        with col2:
-            # Filtro de mês
-            current_month = datetime.now().month
-            month_filter = st.selectbox(
-                "Mês:",
-                list(range(1, 13)),
-                index=current_month - 1,
-                format_func=lambda x: calendar.month_name[x]
-            )
-        
-        with col3:
-            # Filtro de ano
-            current_year = datetime.now().year
-            year_filter = st.selectbox(
-                "Ano:",
-                list(range(current_year - 2, current_year + 3)),
-                index=2
-            )
-        
-        # Filtro de aluno
-        student_filter = st.selectbox(
-            "Aluno:",
-            ["Todos"] + students_df['name'].tolist() if 'name' in students_df.columns else ["Todos"]
-        )
-        
-        # Filtrar pagamentos
-        if not payments_df.empty:
-            # Copiar para não modificar o original
-            filtered_df = payments_df.copy()
-            
-            # Aplicar filtros
-            # Filtro de status
-            if status_filter != "Todos" and 'status' in filtered_df.columns:
-                status_map = {
-                    "Pendente": "pending",
-                    "Pago": "paid",
-                    "Atrasado": "overdue"
-                }
-                if status_filter in status_map:
-                    # Para o status "Atrasado", verificar data de vencimento e status pendente
-                    if status_filter == "Atrasado":
-                        today = datetime.now().date()
-                        mask = (
-                            (filtered_df['status'] == "pending") &
-                            (pd.to_datetime(filtered_df['due_date']).dt.date < today)
-                        )
-                        filtered_df = filtered_df[mask]
-                    else:
-                        filtered_df = filtered_df[filtered_df['status'] == status_map[status_filter]]
-            
-            # Filtro de mês e ano
-            if 'month' in filtered_df.columns and 'year' in filtered_df.columns:
-                filtered_df = filtered_df[
-                    (filtered_df['month'] == month_filter) &
-                    (filtered_df['year'] == year_filter)
-                ]
-            
-            # Filtro de aluno
-            if student_filter != "Todos" and 'phone' in filtered_df.columns:
-                # Obter telefone do aluno selecionado
-                if 'name' in students_df.columns and 'phone' in students_df.columns:
-                    student_phone = students_df[students_df['name'] == student_filter]['phone'].iloc[0]
-                    filtered_df = filtered_df[filtered_df['phone'] == student_phone]
-            
-            # Juntar com dados dos alunos para exibir nome
-            if not filtered_df.empty and not students_df.empty:
-                if 'phone' in filtered_df.columns and 'phone' in students_df.columns and 'name' in students_df.columns:
-                    display_df = pd.merge(
-                        filtered_df,
-                        students_df[['phone', 'name']],
-                        on='phone',
-                        how='left'
-                    )
-                else:
-                    display_df = filtered_df.copy()
-                    if 'phone' in filtered_df.columns and 'phone' not in students_df.columns:
-                        st.warning("Não foi possível juntar dados de alunos (coluna 'phone' não encontrada nos dados de alunos).")
-                    elif 'phone' not in filtered_df.columns:
-                        st.warning("Não foi possível juntar dados de alunos (coluna 'phone' não encontrada nos dados de pagamentos).")
-                    elif 'name' not in students_df.columns:
-                        st.warning("Não foi possível juntar dados de alunos (coluna 'name' não encontrada nos dados de alunos).")
-            else:
-                display_df = filtered_df.copy()
-            
-            # Ordenar por data de vencimento
-            if not display_df.empty and 'due_date' in display_df.columns:
-                display_df = display_df.sort_values('due_date')
-            
-            # Mostrar dados
-            if not display_df.empty:
-                # Colunas a exibir
-                if 'name' in display_df.columns:
-                    display_cols = ['name', 'due_date', 'amount', 'status', 'payment_date', 'payment_method']
-                else:
-                    display_cols = ['phone', 'due_date', 'amount', 'status', 'payment_date', 'payment_method']
-                
-                # Verificar se todas as colunas existem
-                display_cols = [col for col in display_cols if col in display_df.columns]
-                
-                # Preparar dados para exibição
-                display_view = display_df[display_cols].copy()
-                
-                # Formatar valores
-                if 'amount' in display_view.columns:
-                    display_view['amount'] = display_view['amount'].apply(format_currency)
-                if 'status' in display_view.columns:
-                    # Verificar pagamentos atrasados
-                    today = datetime.now().date()
-                    
-                    def format_status(row):
-                        status = row.get('status', '')
-                        due_date = row.get('due_date', None)
-                        
-                        if status == 'pending' and due_date:
-                            due_date = pd.to_datetime(due_date).date()
-                            if due_date < today:
-                                return "Atrasado"
-                        
-                        status_map = {
-                            'pending': 'Pendente',
-                            'paid': 'Pago',
-                            'overdue': 'Atrasado'
-                        }
-                        
-                        return status_map.get(status, status)
-                    
-                    display_view['status'] = display_view.apply(format_status, axis=1)
-                
-                st.dataframe(display_view, use_container_width=True)
-                st.info(f"Total de pagamentos: {len(display_df)}")
-                
-                # Calcular total
-                if 'amount' in filtered_df.columns:
-                    total_amount = filtered_df['amount'].sum()
-                    st.success(f"Valor total: {format_currency(total_amount)}")
-                    
-                    # Calcular por status
-                    if 'status' in filtered_df.columns:
-                        # Total pendente
-                        pending_amount = filtered_df[filtered_df['status'] == 'pending']['amount'].sum()
-                        st.info(f"Total pendente: {format_currency(pending_amount)}")
-                        
-                        # Total pago
-                        paid_amount = filtered_df[filtered_df['status'] == 'paid']['amount'].sum()
-                        st.success(f"Total pago: {format_currency(paid_amount)}")
-                        
-                        # Total atrasado
-                        today = datetime.now().date()
-                        overdue_mask = (
-                            (filtered_df['status'] == 'pending') &
-                            (pd.to_datetime(filtered_df['due_date']).dt.date < today)
-                        )
-                        overdue_amount = filtered_df[overdue_mask]['amount'].sum()
-                        if overdue_amount > 0:
-                            st.error(f"Total atrasado: {format_currency(overdue_amount)}")
-            else:
-                st.info("Nenhum pagamento encontrado com os filtros selecionados.")
-        else:
-            st.info("Nenhum pagamento registrado.")
-    
-    # Aba Novo Pagamento
-    with tab_new:
-        st.subheader("Registrar Novo Pagamento")
-        
-        with st.form("new_payment_form"):
-            # Selecionar aluno
-            student_name = st.selectbox(
-                "Aluno:",
-                students_df['name'].tolist() if 'name' in students_df.columns else [],
-                key="new_payment_student"
-            )
-            
-            # Obter telefone do aluno selecionado
-            if 'name' in students_df.columns and 'phone' in students_df.columns:
-                student_phone = students_df[students_df['name'] == student_name]['phone'].iloc[0]
-            else:
-                student_phone = ""
-                st.warning("Não foi possível obter o telefone do aluno.")
-            
+    if students_df is not None and not students_df.empty:
+        with st.form("payment_form"):
             col1, col2 = st.columns(2)
             
             with col1:
-                # Data de vencimento
-                due_date = st.date_input(
-                    "Data de vencimento",
-                    datetime.now().date(),
-                    key="new_payment_due_date"
+                # Select student
+                student_phone = st.selectbox(
+                    "Selecione o aluno:",
+                    options=students_df['phone'].tolist(),
+                    format_func=lambda x: f"{format_phone(x)} - {students_df[students_df['phone'] == x]['name'].values[0]}"
                 )
                 
-                # Valor
-                amount = st.number_input(
-                    "Valor (R$)",
-                    min_value=0.0,
-                    format="%.2f",
-                    key="new_payment_amount"
-                )
-                
-                # Mês e ano de referência
-                payment_month = st.selectbox(
-                    "Mês de referência",
-                    list(range(1, 13)),
-                    index=datetime.now().month - 1,
-                    format_func=lambda x: calendar.month_name[x],
-                    key="new_payment_month"
-                )
-                
-                payment_year = st.number_input(
-                    "Ano de referência",
-                    min_value=2020,
-                    max_value=2030,
-                    value=datetime.now().year,
-                    key="new_payment_year"
-                )
+                # Get pending payments for this student
+                if payments_df is not None and not payments_df.empty and student_phone:
+                    pending_payments = payments_df[
+                        (payments_df['student_phone'] == student_phone) & 
+                        (payments_df['payment_status'] == 'pending')
+                    ]
+                    
+                    if not pending_payments.empty:
+                        # Format the due date for display
+                        pending_payments['formatted_due_date'] = pd.to_datetime(pending_payments['due_date']).dt.strftime('%d/%m/%Y')
+                        
+                        # Create a readable description for each pending payment
+                        payment_options = [
+                            f"Parcela {row['installment_number']} - Vencimento: {row['formatted_due_date']} - Valor: R$ {row['amount']:.2f}" 
+                            for _, row in pending_payments.iterrows()
+                        ]
+                        
+                        # Map the display text back to the payment_id
+                        payment_id_map = {
+                            f"Parcela {row['installment_number']} - Vencimento: {row['formatted_due_date']} - Valor: R$ {row['amount']:.2f}": row['payment_id']
+                            for _, row in pending_payments.iterrows()
+                        }
+                        
+                        payment_description = st.selectbox(
+                            "Selecione a parcela:",
+                            options=payment_options
+                        )
+                        
+                        payment_id = payment_id_map[payment_description]
+                        
+                        # Get the amount from the selected payment
+                        selected_amount = pending_payments[pending_payments['payment_id'] == payment_id]['amount'].values[0]
+                    else:
+                        st.info("Este aluno não possui parcelas pendentes.")
+                        payment_id = None
+                        selected_amount = 0
+                else:
+                    st.info("Não há dados de pagamento disponíveis.")
+                    payment_id = None
+                    selected_amount = 0
             
             with col2:
-                # Status
-                status = st.selectbox(
-                    "Status",
-                    ["pending", "paid"],
-                    format_func=lambda x: "Pendente" if x == "pending" else "Pago",
-                    key="new_payment_status"
+                payment_date = st.date_input("Data do Pagamento", datetime.now())
+                
+                amount = st.number_input(
+                    "Valor Pago (R$)", 
+                    min_value=0.0, 
+                    value=float(selected_amount) if selected_amount else 0.0, 
+                    step=10.0
                 )
                 
-                # Data de pagamento
-                payment_date = st.date_input(
-                    "Data de pagamento",
-                    datetime.now().date() if status == "paid" else None,
-                    disabled=status != "paid",
-                    key="new_payment_date"
-                )
-                
-                # Método de pagamento
                 payment_method = st.selectbox(
-                    "Método de pagamento",
-                    ["", "Dinheiro", "PIX", "Cartão de Crédito", "Cartão de Débito", "Transferência", "Boleto"],
-                    disabled=status != "paid",
-                    key="new_payment_method"
+                    "Forma de Pagamento",
+                    options=["PIX", "Cartão de Crédito", "Boleto", "Transferência", "Dinheiro"]
                 )
                 
-                # Número da parcela
-                installment = st.number_input(
-                    "Número da parcela",
-                    min_value=1,
-                    value=1,
-                    key="new_payment_installment"
-                )
-                
-                total_installments = st.number_input(
-                    "Total de parcelas",
-                    min_value=1,
-                    value=12,
-                    key="new_payment_total_installments"
-                )
+                notes = st.text_area("Observações", height=100)
             
-            # Comentários
-            comments = st.text_area("Observações", key="new_payment_comments")
-            
-            submitted = st.form_submit_button("Registrar")
+            submitted = st.form_submit_button("Registrar Pagamento")
             
             if submitted:
-                # Validação de dados
-                if not student_phone:
-                    st.error("Selecione um aluno válido.")
+                if not payment_id:
+                    st.error("Por favor, selecione uma parcela para pagamento.")
                 elif amount <= 0:
-                    st.error("O valor deve ser maior que zero.")
-                elif status == "paid" and not payment_method:
-                    st.error("Informe o método de pagamento.")
+                    st.error("O valor do pagamento deve ser maior que zero.")
                 else:
-                    # Preparar dados
-                    new_payment = {
-                        "phone": student_phone,
-                        "amount": amount,
-                        "due_date": due_date.strftime("%Y-%m-%d"),
-                        "status": status,
-                        "payment_date": payment_date.strftime("%Y-%m-%d") if status == "paid" and payment_date else None,
-                        "payment_method": payment_method if status == "paid" else "",
-                        "month": payment_month,
-                        "year": payment_year,
-                        "comments": comments,
-                        "installment": installment,
-                        "total_installments": total_installments
-                    }
+                    # Update payment status
+                    payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_status'] = 'paid'
+                    payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_date'] = payment_date.strftime('%Y-%m-%d')
+                    payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_method'] = payment_method
+                    payments_df.loc[payments_df['payment_id'] == payment_id, 'paid_amount'] = amount
+                    payments_df.loc[payments_df['payment_id'] == payment_id, 'notes'] = notes
                     
-                    # Adicionar ao DataFrame
-                    new_row = pd.DataFrame([new_payment])
+                    # Save updated data
+                    save_payments_data(payments_df)
                     
-                    # Se o DataFrame estiver vazio, criar um novo
-                    if payments_df.empty:
-                        payments_df = new_row
-                    else:
-                        payments_df = pd.concat([payments_df, new_row], ignore_index=True)
-                    
-                    # Salvar dados
-                    try:
-                        save_payments_data(payments_df)
-                        st.success(f"Pagamento registrado com sucesso para o aluno {student_name}!")
-                    except Exception as e:
-                        st.error(f"Erro ao salvar dados: {e}")
+                    st.success("Pagamento registrado com sucesso!")
+    else:
+        st.info("Não há alunos cadastrados ainda.")
+
+with tab2:
+    st.subheader("Lista de Pagamentos")
     
-    # Aba Gerenciar Pagamento
-    with tab_manage:
-        st.subheader("Gerenciar Pagamento")
-        
-        if not payments_df.empty:
-            # Selecionar aluno primeiro
+    # Filter options
+    st.write("Filtros:")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        status_filter = st.multiselect(
+            "Status", 
+            options=["Todos", "Pagos", "Pendentes", "Atrasados"],
+            default=["Todos"]
+        )
+    
+    with col2:
+        date_filter = st.date_input(
+            "Data de Referência",
+            datetime.now()
+        )
+    
+    with col3:
+        student_filter = None
+        if students_df is not None and not students_df.empty:
+            student_options = ["Todos"] + students_df['phone'].tolist()
+            
             student_filter = st.selectbox(
-                "Selecione o aluno:",
-                students_df['name'].tolist() if 'name' in students_df.columns else [],
-                key="manage_payment_student"
+                "Filtrar por Aluno",
+                options=student_options,
+                format_func=lambda x: "Todos" if x == "Todos" else f"{format_phone(x)} - {students_df[students_df['phone'] == x]['name'].values[0]}"
+            )
+    
+    if payments_df is not None and not payments_df.empty:
+        # Apply filters
+        filtered_df = payments_df.copy()
+        
+        # Student filter
+        if student_filter and student_filter != "Todos":
+            filtered_df = filtered_df[filtered_df['student_phone'] == student_filter]
+        
+        # Status filter
+        if "Todos" not in status_filter:
+            temp_df = pd.DataFrame()
+            
+            if "Pagos" in status_filter:
+                temp_df = pd.concat([temp_df, filtered_df[filtered_df['payment_status'] == 'paid']])
+            
+            if "Pendentes" in status_filter:
+                # Pendentes são os que ainda não foram pagos e não estão atrasados
+                pending_df = filtered_df[
+                    (filtered_df['payment_status'] == 'pending') & 
+                    (pd.to_datetime(filtered_df['due_date']) >= pd.to_datetime(date_filter))
+                ]
+                temp_df = pd.concat([temp_df, pending_df])
+            
+            if "Atrasados" in status_filter:
+                # Atrasados são os pendentes com data de vencimento anterior à data de referência
+                overdue_df = filtered_df[
+                    (filtered_df['payment_status'] == 'pending') & 
+                    (pd.to_datetime(filtered_df['due_date']) < pd.to_datetime(date_filter))
+                ]
+                temp_df = pd.concat([temp_df, overdue_df])
+            
+            filtered_df = temp_df
+        
+        # Display dataframe if not empty
+        if not filtered_df.empty:
+            # Create a copy with formatted data for display
+            display_df = filtered_df.copy()
+            
+            # Add student name column from students_df
+            if students_df is not None and not students_df.empty:
+                # Create a map of phone to name
+                phone_to_name = dict(zip(students_df['phone'], students_df['name']))
+                
+                # Add a column with student name
+                display_df['student_name'] = display_df['student_phone'].map(phone_to_name)
+            
+            # Format phone numbers
+            display_df['student_phone'] = display_df['student_phone'].apply(format_phone)
+            
+            # Format payment status with colors
+            def format_status(status, due_date):
+                due_date = pd.to_datetime(due_date)
+                if status == 'paid':
+                    return 'Pago'
+                elif status == 'pending':
+                    if due_date < pd.to_datetime(date_filter):
+                        return 'Atrasado'
+                    else:
+                        return 'Pendente'
+                return status
+            
+            display_df['payment_status'] = display_df.apply(
+                lambda row: format_status(row['payment_status'], row['due_date']), 
+                axis=1
             )
             
-            # Obter telefone do aluno selecionado
-            if 'name' in students_df.columns and 'phone' in students_df.columns:
-                student_phone = students_df[students_df['name'] == student_filter]['phone'].iloc[0]
-            else:
-                student_phone = ""
-                st.warning("Não foi possível obter o telefone do aluno.")
+            # Format dates to Brazilian format (dd/mm/yyyy)
+            display_df['due_date'] = pd.to_datetime(display_df['due_date']).dt.strftime('%d/%m/%Y')
+            display_df['payment_date'] = pd.to_datetime(display_df['payment_date'], errors='coerce').dt.strftime('%d/%m/%Y')
             
-            # Filtrar pagamentos do aluno
-            student_payments = payments_df[payments_df['phone'] == student_phone].copy() if student_phone else pd.DataFrame()
+            # Format amounts as currency
+            display_df['amount'] = display_df['amount'].apply(format_currency)
+            display_df['paid_amount'] = display_df['paid_amount'].apply(
+                lambda x: format_currency(x) if pd.notna(x) and x > 0 else ""
+            )
+            
+            # Reorder and select columns for display
+            columns_to_display = [
+                'payment_id', 'student_name', 'student_phone', 'installment_number',
+                'due_date', 'amount', 'payment_status', 'payment_date', 'paid_amount', 'payment_method'
+            ]
+            
+            # Ensure all columns exist (older data might not have all columns)
+            for col in columns_to_display:
+                if col not in display_df.columns:
+                    display_df[col] = ""
+            
+            # Custom column labels
+            column_labels = {
+                'payment_id': 'ID',
+                'student_name': 'Nome do Aluno',
+                'student_phone': 'Telefone',
+                'installment_number': 'Parcela',
+                'due_date': 'Vencimento',
+                'amount': 'Valor',
+                'payment_status': 'Status',
+                'payment_date': 'Data Pagamento',
+                'paid_amount': 'Valor Pago',
+                'payment_method': 'Forma Pagamento'
+            }
+            
+            # Display the dataframe
+            st.dataframe(
+                display_df[columns_to_display], 
+                use_container_width=True,
+                column_config={col: column_labels[col] for col in columns_to_display}
+            )
+            
+            total_payments = len(filtered_df)
+            total_paid = len(filtered_df[filtered_df['payment_status'] == 'paid'])
+            total_pending = total_payments - total_paid
+            
+            # Calculate total amounts
+            total_amount = filtered_df['amount'].sum()
+            total_paid_amount = filtered_df[filtered_df['payment_status'] == 'paid']['amount'].sum()
+            
+            # Display summary
+            st.info(f"""
+            **Resumo:** {total_payments} pagamentos no total
+            * Pagos: {total_paid} ({format_currency(total_paid_amount)})
+            * Pendentes/Atrasados: {total_pending} ({format_currency(total_amount - total_paid_amount)})
+            """)
+            
+            # Export option
+            if st.button("Exportar Lista (CSV)"):
+                export_df = filtered_df.copy()
+                # Convert to CSV
+                csv = export_df.to_csv(index=False).encode('utf-8')
+                
+                # Create download button
+                st.download_button(
+                    "Baixar CSV",
+                    csv,
+                    "pagamentos.csv",
+                    "text/csv",
+                    key='download-csv-payments'
+                )
+        else:
+            st.warning("Nenhum pagamento encontrado com os filtros selecionados.")
+    else:
+        st.info("Não há pagamentos registrados ainda.")
+
+with tab3:
+    st.subheader("Editar Pagamentos")
+    
+    if payments_df is not None and not payments_df.empty and students_df is not None and not students_df.empty:
+        # Create phone to name mapping
+        phone_to_name = dict(zip(students_df['phone'], students_df['name']))
+        
+        # Allow selecting a student first
+        student_options = students_df['phone'].tolist()
+        
+        selected_student = st.selectbox(
+            "Selecione o aluno:",
+            options=student_options,
+            format_func=lambda x: f"{format_phone(x)} - {phone_to_name.get(x, 'Unknown')}"
+        )
+        
+        if selected_student:
+            # Get payments for this student
+            student_payments = payments_df[payments_df['student_phone'] == selected_student]
             
             if not student_payments.empty:
-                # Ordenar por data de vencimento
-                if 'due_date' in student_payments.columns:
-                    student_payments = student_payments.sort_values('due_date')
+                # Format for selection
+                student_payments['formatted_due_date'] = pd.to_datetime(student_payments['due_date']).dt.strftime('%d/%m/%Y')
                 
-                # Preparar lista de pagamentos para seleção
-                payment_list = []
-                for _, row in student_payments.iterrows():
-                    payment_id = row.get('id', None)
-                    due_date = row.get('due_date', '')
-                    amount = row.get('amount', 0)
-                    status = row.get('status', '')
-                    
-                    # Formatar o status
-                    status_format = {
-                        'pending': '🔸 Pendente',
-                        'paid': '✅ Pago'
-                    }
-                    status_text = status_format.get(status, status)
-                    
-                    # Verificar se está atrasado
-                    if status == 'pending' and due_date:
-                        due_date_obj = pd.to_datetime(due_date).date()
-                        if due_date_obj < datetime.now().date():
-                            status_text = '❌ Atrasado'
-                    
-                    # Formatar texto para seleção
-                    payment_text = f"{due_date} - {format_currency(amount)} - {status_text}"
-                    
-                    payment_list.append((payment_text, payment_id or _))
+                payment_options = [
+                    f"Parcela {row['installment_number']} - Vencimento: {row['formatted_due_date']} - Status: {'Pago' if row['payment_status'] == 'paid' else 'Pendente'}"
+                    for _, row in student_payments.iterrows()
+                ]
                 
-                # Selecionar pagamento
-                selected_payment = st.selectbox(
-                    "Selecione o pagamento:",
-                    [text for text, _ in payment_list],
-                    key="manage_payment_select"
+                payment_id_map = {
+                    f"Parcela {row['installment_number']} - Vencimento: {row['formatted_due_date']} - Status: {'Pago' if row['payment_status'] == 'paid' else 'Pendente'}": row['payment_id']
+                    for _, row in student_payments.iterrows()
+                }
+                
+                # Select payment to edit
+                payment_description = st.selectbox(
+                    "Selecione a parcela para editar:",
+                    options=payment_options
                 )
                 
-                # Obter ID do pagamento selecionado
-                selected_idx = [text for text, _ in payment_list].index(selected_payment)
-                payment_id = payment_list[selected_idx][1]
+                payment_id = payment_id_map[payment_description]
                 
-                # Obter dados do pagamento selecionado
-                if isinstance(payment_id, int):
-                    payment_data = student_payments.iloc[payment_id]
-                else:
-                    payment_data = student_payments[student_payments['id'] == payment_id].iloc[0]
+                # Get payment data
+                payment = payments_df[payments_df['payment_id'] == payment_id].iloc[0]
                 
-                # Exibir formulário de edição
+                # Create edit form
                 with st.form("edit_payment_form"):
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        # Data de vencimento
+                        status = st.selectbox(
+                            "Status",
+                            options=['pending', 'paid'],
+                            format_func=lambda x: 'Pago' if x == 'paid' else 'Pendente',
+                            index=1 if payment['payment_status'] == 'paid' else 0
+                        )
+                        
                         due_date = st.date_input(
-                            "Data de vencimento",
-                            datetime.strptime(payment_data.get('due_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date(),
-                            key="edit_payment_due_date"
+                            "Data de Vencimento",
+                            pd.to_datetime(payment['due_date']).date() if pd.notna(payment['due_date']) else datetime.now()
                         )
                         
-                        # Valor
                         amount = st.number_input(
-                            "Valor (R$)",
+                            "Valor da Parcela (R$)",
                             min_value=0.0,
-                            value=float(payment_data.get('amount', 0)),
-                            format="%.2f",
-                            key="edit_payment_amount"
-                        )
-                        
-                        # Mês e ano de referência
-                        payment_month = st.selectbox(
-                            "Mês de referência",
-                            list(range(1, 13)),
-                            index=int(payment_data.get('month', datetime.now().month)) - 1,
-                            format_func=lambda x: calendar.month_name[x],
-                            key="edit_payment_month"
-                        )
-                        
-                        payment_year = st.number_input(
-                            "Ano de referência",
-                            min_value=2020,
-                            max_value=2030,
-                            value=int(payment_data.get('year', datetime.now().year)),
-                            key="edit_payment_year"
+                            value=float(payment['amount']),
+                            step=10.0
                         )
                     
                     with col2:
-                        # Status
-                        status = st.selectbox(
-                            "Status",
-                            ["pending", "paid"],
-                            index=0 if payment_data.get('status', '') == "pending" else 1,
-                            format_func=lambda x: "Pendente" if x == "pending" else "Pago",
-                            key="edit_payment_status"
-                        )
+                        payment_date = None
+                        payment_method = None
+                        paid_amount = None
                         
-                        # Data de pagamento
-                        payment_date_value = None
-                        if payment_data.get('payment_date'):
-                            try:
-                                payment_date_value = datetime.strptime(payment_data.get('payment_date'), '%Y-%m-%d').date()
-                            except:
-                                payment_date_value = datetime.now().date()
-                        else:
-                            payment_date_value = datetime.now().date()
-                        
-                        payment_date = st.date_input(
-                            "Data de pagamento",
-                            payment_date_value,
-                            disabled=status != "paid",
-                            key="edit_payment_date"
-                        )
-                        
-                        # Método de pagamento
-                        payment_method = st.selectbox(
-                            "Método de pagamento",
-                            ["", "Dinheiro", "PIX", "Cartão de Crédito", "Cartão de Débito", "Transferência", "Boleto"],
-                            index=["", "Dinheiro", "PIX", "Cartão de Crédito", "Cartão de Débito", "Transferência", "Boleto"].index(payment_data.get('payment_method', '')) if payment_data.get('payment_method', '') in ["", "Dinheiro", "PIX", "Cartão de Crédito", "Cartão de Débito", "Transferência", "Boleto"] else 0,
-                            disabled=status != "paid",
-                            key="edit_payment_method"
-                        )
-                        
-                        # Número da parcela
-                        installment = st.number_input(
-                            "Número da parcela",
-                            min_value=1,
-                            value=int(payment_data.get('installment', 1)),
-                            key="edit_payment_installment"
-                        )
-                        
-                        total_installments = st.number_input(
-                            "Total de parcelas",
-                            min_value=1,
-                            value=int(payment_data.get('total_installments', 12)),
-                            key="edit_payment_total_installments"
-                        )
+                        if status == 'paid':
+                            payment_date = st.date_input(
+                                "Data do Pagamento",
+                                pd.to_datetime(payment['payment_date']).date() if pd.notna(payment['payment_date']) else datetime.now()
+                            )
+                            
+                            payment_method = st.selectbox(
+                                "Forma de Pagamento",
+                                options=["PIX", "Cartão de Crédito", "Boleto", "Transferência", "Dinheiro"],
+                                index=0 if 'payment_method' not in payment or pd.isna(payment['payment_method']) 
+                                       else ["PIX", "Cartão de Crédito", "Boleto", "Transferência", "Dinheiro"].index(payment['payment_method'])
+                            )
+                            
+                            paid_amount = st.number_input(
+                                "Valor Pago (R$)",
+                                min_value=0.0,
+                                value=float(payment['paid_amount']) if 'paid_amount' in payment and pd.notna(payment['paid_amount']) else float(payment['amount']),
+                                step=10.0
+                            )
                     
-                    # Comentários
-                    comments = st.text_area("Observações", value=payment_data.get('comments', ''), key="edit_payment_comments")
+                    notes = st.text_area(
+                        "Observações",
+                        value=payment['notes'] if 'notes' in payment and pd.notna(payment['notes']) else "",
+                        height=100
+                    )
                     
-                    submitted = st.form_submit_button("Atualizar")
+                    submitted = st.form_submit_button("Atualizar Pagamento")
                     
                     if submitted:
-                        # Validação de dados
-                        if amount <= 0:
-                            st.error("O valor deve ser maior que zero.")
-                        elif status == "paid" and not payment_method:
-                            st.error("Informe o método de pagamento.")
-                        else:
-                            # Preparar dados
-                            updated_payment = payment_data.copy()
-                            updated_payment.update({
-                                "amount": amount,
-                                "due_date": due_date.strftime("%Y-%m-%d"),
-                                "status": status,
-                                "payment_date": payment_date.strftime("%Y-%m-%d") if status == "paid" else None,
-                                "payment_method": payment_method if status == "paid" else "",
-                                "month": payment_month,
-                                "year": payment_year,
-                                "comments": comments,
-                                "installment": installment,
-                                "total_installments": total_installments
-                            })
-                            
-                            # Atualizar no DataFrame
-                            if 'id' in payment_data and payment_data['id']:
-                                payments_df.loc[payments_df['id'] == payment_data['id']] = updated_payment
-                            else:
-                                payments_df.iloc[payment_id] = updated_payment
-                            
-                            # Salvar dados
-                            try:
-                                save_payments_data(payments_df)
-                                st.success(f"Pagamento atualizado com sucesso!")
-                            except Exception as e:
-                                st.error(f"Erro ao salvar dados: {e}")
-                
-                # Marcar como pago (shortcut)
-                if payment_data.get('status') == "pending":
-                    if st.button("Marcar como Pago", key="mark_as_paid"):
-                        # Preparar dados
-                        updated_payment = payment_data.copy()
-                        updated_payment.update({
-                            "status": "paid",
-                            "payment_date": datetime.now().strftime("%Y-%m-%d"),
-                            "payment_method": "PIX"  # Método padrão
-                        })
+                        # Update payment data
+                        payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_status'] = status
+                        payments_df.loc[payments_df['payment_id'] == payment_id, 'due_date'] = due_date.strftime('%Y-%m-%d')
+                        payments_df.loc[payments_df['payment_id'] == payment_id, 'amount'] = amount
+                        payments_df.loc[payments_df['payment_id'] == payment_id, 'notes'] = notes
                         
-                        # Atualizar no DataFrame
-                        if 'id' in payment_data and payment_data['id']:
-                            payments_df.loc[payments_df['id'] == payment_data['id']] = updated_payment
+                        if status == 'paid':
+                            payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_date'] = payment_date.strftime('%Y-%m-%d')
+                            payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_method'] = payment_method
+                            payments_df.loc[payments_df['payment_id'] == payment_id, 'paid_amount'] = paid_amount
                         else:
-                            payments_df.iloc[payment_id] = updated_payment
+                            # Clear payment data if status is pending
+                            payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_date'] = None
+                            payments_df.loc[payments_df['payment_id'] == payment_id, 'payment_method'] = None
+                            payments_df.loc[payments_df['payment_id'] == payment_id, 'paid_amount'] = None
                         
-                        # Salvar dados
-                        try:
-                            save_payments_data(payments_df)
-                            st.success(f"Pagamento marcado como pago com sucesso!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao salvar dados: {e}")
-                
-                # Excluir pagamento
-                if st.button("Excluir Pagamento", type="primary", help="Cuidado! Esta ação não pode ser desfeita.", key="delete_payment"):
-                    # Excluir do DataFrame
-                    if 'id' in payment_data and payment_data['id']:
-                        payments_df = payments_df[payments_df['id'] != payment_data['id']]
-                    else:
-                        payments_df = payments_df.drop(payment_id)
-                    
-                    # Salvar dados
-                    try:
+                        # Save updated data
                         save_payments_data(payments_df)
-                        st.success(f"Pagamento excluído com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar dados: {e}")
+                        
+                        st.success("Pagamento atualizado com sucesso!")
             else:
-                st.info(f"Não há pagamentos registrados para este aluno.")
-        else:
-            st.info("Nenhum pagamento registrado.")
+                st.info("Este aluno não possui pagamentos registrados.")
+    else:
+        st.info("Não há pagamentos ou alunos registrados ainda.")
