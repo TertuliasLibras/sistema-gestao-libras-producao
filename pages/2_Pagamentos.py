@@ -133,11 +133,20 @@ with tab1:
                     existing_payment = None
                     
                     if not payments_df.empty:
-                        existing_payment = payments_df[
-                            (payments_df['phone'] == selected_phone) & 
-                            (payments_df['month_reference'] == month_reference) & 
-                            (payments_df['year_reference'] == year_reference)
-                        ]
+                        # Verificar primeiro se temos as colunas month_reference e year_reference
+                        if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
+                            existing_payment = payments_df[
+                                (payments_df['phone'] == selected_phone) & 
+                                (payments_df['month_reference'] == month_reference) & 
+                                (payments_df['year_reference'] == year_reference)
+                            ]
+                        # Verificar se temos month e year
+                        elif 'month' in payments_df.columns and 'year' in payments_df.columns:
+                            existing_payment = payments_df[
+                                (payments_df['phone'] == selected_phone) & 
+                                (payments_df['month'] == month_reference) & 
+                                (payments_df['year'] == year_reference)
+                            ]
                     
                     if existing_payment is not None and not existing_payment.empty:
                         st.warning(f"Já existe um pagamento registrado para este aluno no mês {calendar.month_name[month_reference]}/{year_reference}.")
@@ -247,11 +256,17 @@ with tab2:
         
         # Month filter
         if "Todos" not in month_filter:
-            filtered_df = filtered_df[filtered_df['month_reference'].isin(month_filter)]
+            if 'month_reference' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['month_reference'].isin(month_filter)]
+            elif 'month' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['month'].isin(month_filter)]
         
         # Year filter
         if "Todos" not in year_filter:
-            filtered_df = filtered_df[filtered_df['year_reference'].isin(year_filter)]
+            if 'year_reference' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['year_reference'].isin(year_filter)]
+            elif 'year' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['year'].isin(year_filter)]
         
         # Search filter
         if search_term:
@@ -270,7 +285,10 @@ with tab2:
             display_df['phone'] = display_df['phone'].apply(format_phone)
             
             # Format month reference
-            display_df['month_name'] = display_df['month_reference'].apply(lambda x: calendar.month_name[x])
+            if 'month_reference' in display_df.columns:
+                display_df['month_name'] = display_df['month_reference'].apply(lambda x: calendar.month_name[x])
+            elif 'month' in display_df.columns:
+                display_df['month_name'] = display_df['month'].apply(lambda x: calendar.month_name[x])
             
             # Format status
             display_df['status'] = display_df['status'].map({
@@ -341,7 +359,10 @@ with tab2:
             if st.button("Exportar Lista (CSV)"):
                 export_df = filtered_df.copy()
                 # Format month name for export
-                export_df['month_name'] = export_df['month_reference'].apply(lambda x: calendar.month_name[x])
+                if 'month_reference' in export_df.columns:
+                    export_df['month_name'] = export_df['month_reference'].apply(lambda x: calendar.month_name[x])
+                elif 'month' in export_df.columns:
+                    export_df['month_name'] = export_df['month'].apply(lambda x: calendar.month_name[x])
                 # Convert to CSV
                 csv = export_df.to_csv(index=False).encode('utf-8')
                 
