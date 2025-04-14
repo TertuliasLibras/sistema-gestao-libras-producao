@@ -290,9 +290,9 @@ with tab3:
             # Verificar se o filtro retornou algum resultado
             if filtered_students.empty:
                 st.error(f"Aluno com telefone {selected_phone} não encontrado!")
-                return
-                
-            student = filtered_students.iloc[0]
+                st.stop()  # Usando st.stop() em vez de return
+            else:
+                student = filtered_students.iloc[0]
             
             # Create edit form
             with st.form("edit_student_form"):
