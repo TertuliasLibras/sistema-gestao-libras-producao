@@ -351,8 +351,16 @@ else:
                     # Se já foi carregado, removemos para poder recarregar
                     del sys.modules[page_name]
                 
+                # Mapear nomes de páginas para os arquivos reais
+                page_map = {
+                    'alunos': '1_Alunos.py',
+                    'pagamentos': 'pages/pagamentos.py',
+                    'estagios': 'pages/estagios.py',
+                    'relatorios': 'pages/relatorios.py'
+                }
+                
                 # Caminho do arquivo da página
-                file_path = f"pages/{page_name}.py"
+                file_path = page_map.get(page_name, f"pages/{page_name}.py")
                 
                 # Carrega o módulo
                 module = load_module_from_path(page_name, file_path)
