@@ -418,9 +418,19 @@ with tab3:
                         if payments_df is not None and not payments_df.empty:
                             payments_df = payments_df[payments_df['phone'] != selected_phone]
                         
+                        # Também excluir pagamentos usando a função específica
+                        try:
+                            from database import delete_student_payments
+                            delete_student_payments(selected_phone)
+                        except Exception as e:
+                            st.warning(f"Aviso: não foi possível excluir pagamentos associados devido a {e}")
+                        
                         # Save updated data
                         save_students_data(students_df)
                         save_payments_data(payments_df)
+                        
+                        # Log de exclusão para debug
+                        st.debug(f"Aluno {selected_phone} excluído. Tabela atual possui {len(students_df)} registros")
                         
                         st.success("Aluno excluído com sucesso!")
                         st.rerun()
