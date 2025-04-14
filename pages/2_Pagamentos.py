@@ -149,41 +149,59 @@ with tab1:
                             ]
                     
                     if existing_payment is not None and not existing_payment.empty:
-                        st.warning(f"Já existe um pagamento registrado para este aluno no mês {calendar.month_name[month_reference]}/{year_reference}.")
-                        st.info("Para atualizar, clique em 'Registrar Pagamento' novamente.")
-                        
-                        # Use form_submit_button for confirmation
-                        update_payment = st.form_submit_button("Atualizar Pagamento Existente")
-                        
-                        if update_payment:
-                            # Update existing payment
-                            if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
-                                payments_df.loc[
-                                    (payments_df['phone'] == selected_phone) & 
-                                    (payments_df['month_reference'] == month_reference) & 
-                                    (payments_df['year_reference'] == year_reference),
-                                    ['payment_date', 'amount', 'status', 'notes']
-                                ] = [
-                                    payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
-                                    amount,
-                                    status,
-                                    notes
-                                ]
-                            elif 'month' in payments_df.columns and 'year' in payments_df.columns:
-                                payments_df.loc[
-                                    (payments_df['phone'] == selected_phone) & 
-                                    (payments_df['month'] == month_reference) & 
-                                    (payments_df['year'] == year_reference),
-                                    ['payment_date', 'amount', 'status', 'notes']
-                                ] = [
-                                    payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
-                                    amount,
-                                    status,
-                                    notes
-                                ]
+                        # Armazenar a escolha do usuário em sessão
+                        if 'update_payment_mode' not in st.session_state:
+                            st.session_state['update_payment_mode'] = False
                             
-                            save_payments_data(payments_df)
-                            st.success("Pagamento atualizado com sucesso!")
+                        # Mostrar mensagem e opção para editar
+                        if not st.session_state['update_payment_mode']:
+                            st.warning(f"Já existe um pagamento registrado para este aluno no mês {calendar.month_name[month_reference]}/{year_reference}.")
+                            update_option = st.checkbox("Desejo atualizar o pagamento existente")
+                            if update_option:
+                                st.session_state['update_payment_mode'] = True
+                                st.rerun()
+                                
+                        # Modo de atualização
+                        if st.session_state['update_payment_mode']:
+                            st.info(f"⚠️ Você está ATUALIZANDO o pagamento de {calendar.month_name[month_reference]}/{year_reference}.")
+                            # Botão principal serve como atualização
+                            update_payment = st.form_submit_button("Confirmar Atualização")
+                            
+                            if update_payment:
+                                # Atualizar o pagamento existente
+                                if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
+                                    payments_df.loc[
+                                        (payments_df['phone'] == selected_phone) & 
+                                        (payments_df['month_reference'] == month_reference) & 
+                                        (payments_df['year_reference'] == year_reference),
+                                        ['payment_date', 'amount', 'status', 'notes']
+                                    ] = [
+                                        payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
+                                        amount,
+                                        status,
+                                        notes
+                                    ]
+                                elif 'month' in payments_df.columns and 'year' in payments_df.columns:
+                                    payments_df.loc[
+                                        (payments_df['phone'] == selected_phone) & 
+                                        (payments_df['month'] == month_reference) & 
+                                        (payments_df['year'] == year_reference),
+                                        ['payment_date', 'amount', 'status', 'notes']
+                                    ] = [
+                                        payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
+                                        amount,
+                                        status,
+                                        notes
+                                    ]
+                                
+                                save_payments_data(payments_df)
+                                st.success("Pagamento atualizado com sucesso!")
+                                st.session_state['update_payment_mode'] = False
+                                
+                        else:
+                            # No modo normal, desabilitar o botão de registro
+                            disabled_submit = st.form_submit_button("Registrar Pagamento", disabled=True)
+                    
                     else:
                         # Create new payment record
                         new_payment = {
