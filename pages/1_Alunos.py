@@ -409,7 +409,7 @@ with tab3:
                         
                         # Also remove associated payments
                         if payments_df is not None and not payments_df.empty:
-                            payments_df = payments_df[payments_df['student_phone'] != selected_phone]
+                            payments_df = payments_df[payments_df['phone'] != selected_phone]
                         
                         # Save updated data
                         save_students_data(students_df)
