@@ -101,11 +101,21 @@ def delete_student(phone):
         students_df = pd.read_csv(STUDENTS_FILE) if os.path.exists(STUDENTS_FILE) else pd.DataFrame()
         
         if not students_df.empty and 'phone' in students_df.columns:
-            # Remover estudante
-            students_df = students_df[students_df['phone'] != phone]
-            
-            # Salvar
-            students_df.to_csv(STUDENTS_FILE, index=False)
+            # Verificar se o estudante existe
+            if phone in students_df['phone'].values:
+                # Remover estudante
+                students_df = students_df[students_df['phone'] != phone]
+                
+                # Salvar
+                students_df.to_csv(STUDENTS_FILE, index=False)
+                
+                # Também excluir os pagamentos associados
+                delete_student_payments(phone)
+                
+                return True
+            else:
+                st.warning(f"Estudante com telefone {phone} não encontrado.")
+                return False
         
         return True
     except Exception as e:
