@@ -243,4 +243,150 @@ def get_months_between_dates(start_date, end_date):
         start_date = datetime.strptime(start_date, '%Y-%m-%d')
     
     if isinstance(end_date, str):
-        end_date
+        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    
+    # Converter para datetime.date para comparação
+    start_date_for_compare = start_date
+    if hasattr(start_date, 'date'):
+        start_date_for_compare = start_date.date()
+    
+    end_date_for_compare = end_date
+    if hasattr(end_date, 'date'):
+        end_date_for_compare = end_date.date()
+    
+    months = []
+    current_date = datetime(start_date.year, start_date.month, 1)
+    
+    # Use string comparison para evitar problemas de tipo
+    current_str = current_date.strftime('%Y-%m')
+    end_str = end_date.strftime('%Y-%m')
+    
+    while current_str <= end_str:
+        months.append(current_date)
+        
+        # Avançar para o próximo mês
+        if current_date.month == 12:
+            current_date = datetime(current_date.year + 1, 1, 1)
+        else:
+            current_date = datetime(current_date.year, current_date.month + 1, 1)
+        
+        current_str = current_date.strftime('%Y-%m')
+    
+    return months
+
+def generate_monthly_payments(student_phone, monthly_fee, enrollment_date, payment_plan=12, end_date=None, due_day=10):
+    """Generate monthly payment records for a student based on payment plan
+    
+    Args:
+        student_phone: Phone number of student
+        monthly_fee: Monthly fee amount
+        enrollment_date: Date of enrollment
+        payment_plan: Number of installments (default: 12)
+        end_date: Optional end date (if not provided, will calculate based on payment_plan)
+        due_day: Day of the month for payment due date (default: 10)
+    """
+    # Validar argumentos
+    if not student_phone or not monthly_fee:
+        return []
+    
+    # Garantir que enrollment_date é datetime
+    if isinstance(enrollment_date, str):
+        enrollment_date = datetime.strptime(enrollment_date, '%Y-%m-%d')
+    
+    # Se due_day for inválido, usar 10 como padrão
+    if not due_day or due_day < 1 or due_day > 28:
+        due_day = 10
+    
+    # Calcular end_date se não fornecido
+    if not end_date:
+        # Adicionar payment_plan meses à data de matrícula
+        if enrollment_date.month + payment_plan <= 12:
+            end_month = enrollment_date.month + payment_plan
+            end_year = enrollment_date.year
+        else:
+            extra_years = (enrollment_date.month + payment_plan - 1) // 12
+            end_month = (enrollment_date.month + payment_plan - 1) % 12 + 1
+            end_year = enrollment_date.year + extra_years
+        
+        # Último dia do mês final
+        _, last_day = calendar.monthrange(end_year, end_month)
+        end_date = datetime(end_year, end_month, min(enrollment_date.day, last_day))
+    else:
+        # Garantir que end_date é datetime
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    
+    # Gerar lista de meses entre as datas
+    months = get_months_between_dates(enrollment_date, end_date)
+    
+    # Criar registros de pagamento para cada mês
+    payments = []
+    
+    for month_date in months:
+        # Determinar data de vencimento
+        # Se for o primeiro mês e o dia de vencimento já passou, usar o dia da matrícula
+        if month_date.month == enrollment_date.month and month_date.year == enrollment_date.year and enrollment_date.day > due_day:
+            due_date = enrollment_date
+        else:
+            # Verificar quantos dias tem o mês
+            _, last_day = calendar.monthrange(month_date.year, month_date.month)
+            due_date = datetime(month_date.year, month_date.month, min(due_day, last_day))
+        
+        # Verificar se o pagamento está atrasado
+        payment_status = "pending"
+        today = datetime.now().date()
+        
+        # Obter a data de vencimento como date
+        due_date_as_date = due_date
+        if hasattr(due_date, 'date'):
+            due_date_as_date = due_date.date()
+        elif type(due_date) == str:
+            try:
+                due_date_as_date = datetime.strptime(due_date, '%Y-%m-%d').date()
+            except:
+                due_date_as_date = due_date
+        
+        # Comparação de datas usando string para evitar problemas de tipo
+        try:
+            # Converter para string YYYY-MM-DD para comparação de datas
+            if hasattr(due_date_as_date, 'strftime'):
+                due_date_str = due_date_as_date.strftime('%Y-%m-%d')
+            elif type(due_date_as_date) == str:
+                due_date_str = due_date_as_date
+            else:
+                due_date_str = str(due_date_as_date)
+                
+            today_str = today.strftime('%Y-%m-%d')
+            
+            if due_date_str < today_str:
+                payment_status = "pending"  # Começar como pendente mesmo se atrasado
+        except Exception as e:
+            # Em caso de erro, manter como pendente
+            payment_status = "pending"
+        
+        # Formatar a data de vencimento com tratamento de erro
+        try:
+            if hasattr(due_date, 'strftime'):
+                due_date_formatted = due_date.strftime('%Y-%m-%d')
+            else:
+                due_date_formatted = str(due_date)
+        except Exception:
+            # Em caso de erro, usar a data atual formatada
+            due_date_formatted = datetime.now().strftime('%Y-%m-%d')
+            
+        payment = {
+            "phone": student_phone,
+            "amount": monthly_fee,
+            "due_date": due_date_formatted,
+            "payment_date": None,
+            "status": payment_status,
+            "payment_method": "",
+            "month": month_date.month,
+            "year": month_date.year,
+            "installment": months.index(month_date) + 1,
+            "total_installments": len(months)
+        }
+        
+        payments.append(payment)
+    
+    return payments
