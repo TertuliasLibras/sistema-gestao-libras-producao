@@ -312,28 +312,37 @@ with tab2:
                 (filtered_df['status'] != 'paid')
             )
             
-            # Use DataFrame with custom formatting
+            # Definir as colunas disponíveis para exibição
+            display_columns = ['name', 'phone', 'month_name', 'amount', 'due_date', 'payment_date', 'status', 'is_late']
+            column_labels = {
+                'name': 'Nome',
+                'phone': 'Telefone',
+                'month_name': 'Mês',
+                'amount': 'Valor',
+                'due_date': 'Vencimento',
+                'payment_date': 'Data Pagamento',
+                'status': 'Status',
+                'is_late': 'Atrasado'
+            }
+            column_order = ['name', 'phone', 'month_name', 'amount', 'due_date', 'payment_date', 'status', 'is_late']
+            
+            # Adicionar ano se disponível
+            if 'year_reference' in display_df.columns:
+                display_columns.append('year_reference')
+                column_labels['year_reference'] = 'Ano'
+                column_order.insert(3, 'year_reference')
+            elif 'year' in display_df.columns:
+                display_df['year_reference'] = display_df['year']  # Criar coluna temporária com nome padronizado
+                display_columns.append('year_reference')
+                column_labels['year_reference'] = 'Ano'
+                column_order.insert(3, 'year_reference')
+                
+            # Use DataFrame com formatação personalizada
             st.dataframe(
-                display_df[[
-                    'name', 'phone', 'month_name', 'year_reference', 
-                    'amount', 'due_date', 'payment_date', 'status', 'is_late'
-                ]],
+                display_df[display_columns],
                 use_container_width=True,
-                column_config={
-                    'name': 'Nome',
-                    'phone': 'Telefone',
-                    'month_name': 'Mês',
-                    'year_reference': 'Ano',
-                    'amount': 'Valor',
-                    'due_date': 'Vencimento',
-                    'payment_date': 'Data Pagamento',
-                    'status': 'Status',
-                    'is_late': 'Atrasado'
-                },
-                column_order=[
-                    'name', 'phone', 'month_name', 'year_reference', 
-                    'amount', 'due_date', 'payment_date', 'status', 'is_late'
-                ],
+                column_config=column_labels,
+                column_order=column_order,
                 height=400
             )
             
@@ -437,10 +446,18 @@ with tab3:
                     existing_phones = []
                     
                     if not payments_df.empty:
-                        existing_payments = payments_df[
-                            (payments_df['month_reference'] == month_reference) & 
-                            (payments_df['year_reference'] == year_reference)
-                        ]
+                        if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
+                            existing_payments = payments_df[
+                                (payments_df['month_reference'] == month_reference) & 
+                                (payments_df['year_reference'] == year_reference)
+                            ]
+                        elif 'month' in payments_df.columns and 'year' in payments_df.columns:
+                            existing_payments = payments_df[
+                                (payments_df['month'] == month_reference) & 
+                                (payments_df['year'] == year_reference)
+                            ]
+                        else:
+                            existing_payments = pd.DataFrame()  # Se as colunas não existirem, criar DataFrame vazio
                         
                         if not existing_payments.empty:
                             existing_phones = existing_payments['phone'].unique().tolist()
