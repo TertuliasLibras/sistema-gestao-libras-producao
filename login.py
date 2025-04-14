@@ -351,5 +351,63 @@ def pagina_gerenciar_usuarios():
                         else:
                             st.error("Erro ao localizar o usuário no banco de dados.")
 
+# Função para troca de senha do usuário logado
+def pagina_trocar_senha():
+    st.title("Trocar Senha")
+    
+    if not verificar_autenticacao():
+        st.error("Você precisa estar logado para trocar a senha.")
+        return
+    
+    usuario_atual = st.session_state[LOGIN_SESSION_VAR]['usuario']
+    
+    with st.form("trocar_senha_form"):
+        st.write(f"Usuário: **{usuario_atual}**")
+        
+        senha_atual = st.text_input("Senha Atual", type="password")
+        nova_senha = st.text_input("Nova Senha", type="password")
+        confirmar_senha = st.text_input("Confirmar Nova Senha", type="password")
+        
+        submit_button = st.form_submit_button("Trocar Senha")
+        
+        if submit_button:
+            if not senha_atual or not nova_senha or not confirmar_senha:
+                st.error("Todos os campos são obrigatórios!")
+            elif nova_senha != confirmar_senha:
+                st.error("As senhas não coincidem!")
+            else:
+                # Verificar se a senha atual está correta
+                senha_atual_hash = hash_senha(senha_atual)
+                
+                # Buscar o usuário no banco de dados
+                usuarios = load_users()
+                usuario_encontrado = None
+                
+                for usuario in usuarios:
+                    if usuario['username'] == usuario_atual:
+                        usuario_encontrado = usuario
+                        break
+                
+                if not usuario_encontrado or usuario_encontrado['password_hash'] != senha_atual_hash:
+                    st.error("Senha atual incorreta!")
+                else:
+                    # Atualizar a senha
+                    nova_senha_hash = hash_senha(nova_senha)
+                    usuario_atualizado = usuario_encontrado.copy()
+                    usuario_atualizado['password_hash'] = nova_senha_hash
+                    
+                    # Salvar no banco de dados
+                    update_user(usuario_encontrado['id'], usuario_atualizado)
+                    
+                    st.success("Senha atualizada com sucesso!")
+                    # Iniciar um contador para retornar ao dashboard
+                    st.info("Redirecionando para o dashboard em 3 segundos...")
+                    import time
+                    time.sleep(3)
+                    # Redirecionar
+                    if 'mostrar_trocar_senha' in st.session_state:
+                        st.session_state['mostrar_trocar_senha'] = False
+                    st.rerun()
+
 if __name__ == "__main__":
     mostrar_pagina_login()
