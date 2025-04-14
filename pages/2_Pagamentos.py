@@ -150,21 +150,37 @@ with tab1:
                     
                     if existing_payment is not None and not existing_payment.empty:
                         st.warning(f"Já existe um pagamento registrado para este aluno no mês {calendar.month_name[month_reference]}/{year_reference}.")
+                        st.info("Para atualizar, clique em 'Registrar Pagamento' novamente.")
                         
-                        # Ask if user wants to overwrite
-                        if st.button("Atualizar pagamento existente"):
+                        # Use form_submit_button for confirmation
+                        update_payment = st.form_submit_button("Atualizar Pagamento Existente")
+                        
+                        if update_payment:
                             # Update existing payment
-                            payments_df.loc[
-                                (payments_df['phone'] == selected_phone) & 
-                                (payments_df['month_reference'] == month_reference) & 
-                                (payments_df['year_reference'] == year_reference),
-                                ['payment_date', 'amount', 'status', 'notes']
-                            ] = [
-                                payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
-                                amount,
-                                status,
-                                notes
-                            ]
+                            if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
+                                payments_df.loc[
+                                    (payments_df['phone'] == selected_phone) & 
+                                    (payments_df['month_reference'] == month_reference) & 
+                                    (payments_df['year_reference'] == year_reference),
+                                    ['payment_date', 'amount', 'status', 'notes']
+                                ] = [
+                                    payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
+                                    amount,
+                                    status,
+                                    notes
+                                ]
+                            elif 'month' in payments_df.columns and 'year' in payments_df.columns:
+                                payments_df.loc[
+                                    (payments_df['phone'] == selected_phone) & 
+                                    (payments_df['month'] == month_reference) & 
+                                    (payments_df['year'] == year_reference),
+                                    ['payment_date', 'amount', 'status', 'notes']
+                                ] = [
+                                    payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
+                                    amount,
+                                    status,
+                                    notes
+                                ]
                             
                             save_payments_data(payments_df)
                             st.success("Pagamento atualizado com sucesso!")
