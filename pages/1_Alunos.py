@@ -280,12 +280,19 @@ with tab3:
         selected_phone = st.selectbox(
             "Selecione o aluno pelo telefone:",
             options=students_df['phone'].tolist(),
-            format_func=lambda x: f"{format_phone(x)} - {students_df[students_df['phone'] == x]['name'].values[0]}"
+            format_func=lambda x: f"{format_phone(x)} - {students_df[students_df['phone'] == x]['name'].iloc[0] if not students_df[students_df['phone'] == x].empty else 'Aluno não encontrado'}"
         )
         
         if selected_phone:
             # Get selected student data
-            student = students_df[students_df['phone'] == selected_phone].iloc[0]
+            filtered_students = students_df[students_df['phone'] == selected_phone]
+            
+            # Verificar se o filtro retornou algum resultado
+            if filtered_students.empty:
+                st.error(f"Aluno com telefone {selected_phone} não encontrado!")
+                return
+                
+            student = filtered_students.iloc[0]
             
             # Create edit form
             with st.form("edit_student_form"):
