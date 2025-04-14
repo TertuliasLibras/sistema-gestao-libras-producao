@@ -44,42 +44,45 @@ def load_internships_data():
 def save_students_data(df):
     """Save student data to CSV file"""
     try:
-        if df is None or df.empty:
+        if df is None:
             return
         
-        from database import save_student
-        # Para cada estudante, salvar os dados
-        for _, row in df.iterrows():
-            student_data = row.to_dict()
-            save_student(student_data)
+        # Salvar o DataFrame diretamente no CSV, substituindo o arquivo existente
+        from database import STUDENTS_FILE
+        df.to_csv(STUDENTS_FILE, index=False)
+        
+        # Log para facilitar a depuração
+        st.debug(f"Arquivo de alunos salvo com {len(df)} registros")
     except Exception as e:
         st.error(f"Erro ao salvar dados dos alunos: {e}")
 
 def save_payments_data(df):
     """Save payment data to CSV file"""
     try:
-        if df is None or df.empty:
+        if df is None:
             return
         
-        from database import save_payment
-        # Para cada pagamento, salvar os dados
-        for _, row in df.iterrows():
-            payment_data = row.to_dict()
-            save_payment(payment_data)
+        # Salvar o DataFrame diretamente no CSV, substituindo o arquivo existente
+        from database import PAYMENTS_FILE
+        df.to_csv(PAYMENTS_FILE, index=False)
+        
+        # Log para facilitar a depuração
+        st.debug(f"Arquivo de pagamentos salvo com {len(df)} registros")
     except Exception as e:
         st.error(f"Erro ao salvar dados de pagamentos: {e}")
         
 def save_internships_data(df):
     """Save internship data to CSV file"""
     try:
-        if df is None or df.empty:
+        if df is None:
             return
         
-        from database import save_internship
-        # Para cada estágio, salvar os dados
-        for _, row in df.iterrows():
-            internship_data = row.to_dict()
-            save_internship(internship_data)
+        # Salvar o DataFrame diretamente no CSV, substituindo o arquivo existente
+        from database import INTERNSHIPS_FILE
+        df.to_csv(INTERNSHIPS_FILE, index=False)
+        
+        # Log para facilitar a depuração
+        st.debug(f"Arquivo de estágios salvo com {len(df)} registros")
     except Exception as e:
         st.error(f"Erro ao salvar dados de estágios: {e}")
 
