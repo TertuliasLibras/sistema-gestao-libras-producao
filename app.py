@@ -234,7 +234,18 @@ else:
         # Mostrar logo atual
         st.write("### Logo Atual")
         logo_path = get_logo_path()
-        st.image(logo_path, width=150)
+        try:
+            if os.path.exists(logo_path):
+                st.image(logo_path, width=150)
+            else:
+                st.error(f"Arquivo de logo não encontrado: {logo_path}")
+                if os.path.exists('assets/images/logo.svg'):
+                    st.image('assets/images/logo.svg', width=150)
+                elif os.path.exists('assets/images/logo.png'):
+                    st.image('assets/images/logo.png', width=150)
+        except Exception as e:
+            st.error(f"Erro ao carregar logo: {e}")
+            st.write("Usando texto alternativo para logo")
         
         # Opções para restaurar logo padrão
         if st.button("Restaurar Logo Padrão"):
@@ -319,10 +330,28 @@ else:
             try:
                 # Usar função para obter o caminho da logo
                 logo_path = get_logo_path()
-                st.image(logo_path, width=150)
+                if os.path.exists(logo_path):
+                    try:
+                        st.image(logo_path, width=150)
+                    except Exception as e:
+                        st.warning(f"Erro ao carregar a imagem: {e}")
+                        if os.path.exists('assets/images/logo.svg'):
+                            st.image('assets/images/logo.svg', width=150)
+                        elif os.path.exists('assets/images/logo.png'):
+                            st.image('assets/images/logo.png', width=150)
+                        else:
+                            st.write("⚠️ Logo temporariamente indisponível")
+                else:
+                    st.warning(f"Arquivo de logo não encontrado: {logo_path}")
+                    if os.path.exists('assets/images/logo.svg'):
+                        st.image('assets/images/logo.svg', width=150)
+                    elif os.path.exists('assets/images/logo.png'):
+                        st.image('assets/images/logo.png', width=150)
+                    else:
+                        st.write("⚠️ Logo temporariamente indisponível")
             except Exception as e:
-                st.write(f"Erro ao carregar logo: {e}")
-                st.write("Entre em contato com suporte.")
+                st.error(f"Erro ao processar logo: {e}")
+                st.write("⚠️ Logo temporariamente indisponível")
         with col2:
             st.markdown('<div class="logo-text">Sistema de Gestão - Pós-Graduação Libras</div>', unsafe_allow_html=True)
         
