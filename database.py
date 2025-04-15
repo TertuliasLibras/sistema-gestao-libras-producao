@@ -126,11 +126,33 @@ def load_payments():
     """Carrega todos os pagamentos do arquivo CSV"""
     try:
         if os.path.exists(PAYMENTS_FILE):
+            if os.path.getsize(PAYMENTS_FILE) == 0:
+                st.warning("Arquivo de pagamentos está vazio")
+                return []
+                
             df = pd.read_csv(PAYMENTS_FILE)
+            
+            # Verificar se o arquivo tem dados além do cabeçalho
+            if len(df) == 0:
+                st.warning("Não há pagamentos registrados no sistema (arquivo vazio)")
+                return []
+                
+            # Log para depuração - mostrar quantos registros foram carregados
+            st.success(f"Carregados {len(df)} registros de pagamentos do arquivo")
+            
+            # Verificar se há status 'paid' nos registros
+            if 'status' in df.columns:
+                paid_count = len(df[df['status'] == 'paid'])
+                st.success(f"Encontrados {paid_count} pagamentos com status 'paid'")
+            
             return df.to_dict('records')
-        return []
+        else:
+            st.warning("Arquivo de pagamentos não existe, será criado ao registrar o primeiro pagamento")
+            return []
     except Exception as e:
         st.error(f"Erro ao carregar pagamentos: {e}")
+        import traceback
+        st.error(traceback.format_exc())
         return []
 
 def save_payment(payment_data):
@@ -163,11 +185,29 @@ def save_payment(payment_data):
             new_row = pd.DataFrame([payment_data])
             payments_df = pd.concat([payments_df, new_row], ignore_index=True)
         
-        # Salvar
+        # Garantir que existe coluna month_reference e year_reference
+        if 'month' in payment_data and 'month_reference' not in payment_data:
+            payment_data['month_reference'] = payment_data['month']
+            
+        if 'year' in payment_data and 'year_reference' not in payment_data:
+            payment_data['year_reference'] = payment_data['year']
+        
+        # Salvar o arquivo
         payments_df.to_csv(PAYMENTS_FILE, index=False)
-        return True
+        
+        # Verificar se o arquivo foi salvo corretamente e registrar o resultado
+        import os
+        if os.path.exists(PAYMENTS_FILE):
+            file_size = os.path.getsize(PAYMENTS_FILE)
+            st.success(f"Pagamento salvo com sucesso. Arquivo: {len(payments_df)} registros, {file_size} bytes")
+            return True
+        else:
+            st.error("Falha ao salvar o arquivo de pagamentos!")
+            return False
     except Exception as e:
         st.error(f"Erro ao salvar pagamento: {e}")
+        import traceback
+        st.error(traceback.format_exc())
         return False
 
 def update_payment(payment_id, payment_data):
