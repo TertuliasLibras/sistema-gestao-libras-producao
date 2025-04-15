@@ -232,6 +232,13 @@ with tab1:
 with tab2:
     st.subheader("Lista de Pagamentos")
     
+    # Adicionar botão para recarregar dados
+    if st.button("🔄 Recarregar Dados de Pagamentos", type="primary", use_container_width=True):
+        # Recarregar dados
+        st.cache_data.clear()
+        payments_df = load_payments_data()
+        st.success("Dados de pagamentos recarregados!")
+        
     # Filter options
     st.write("Filtros:")
     col1, col2, col3 = st.columns(3)
