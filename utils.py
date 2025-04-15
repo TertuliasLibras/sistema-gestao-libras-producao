@@ -51,8 +51,8 @@ def save_students_data(df):
         from database import STUDENTS_FILE
         df.to_csv(STUDENTS_FILE, index=False)
         
-        # Log para facilitar a depuração
-        st.debug(f"Arquivo de alunos salvo com {len(df)} registros")
+        # Log para facilitar a depuração (usando success ao invés de debug)
+        st.success(f"Arquivo de alunos salvo com {len(df)} registros")
     except Exception as e:
         st.error(f"Erro ao salvar dados dos alunos: {e}")
 
@@ -64,10 +64,34 @@ def save_payments_data(df):
         
         # Salvar o DataFrame diretamente no CSV, substituindo o arquivo existente
         from database import PAYMENTS_FILE
+        
+        # Garantir que o DataFrame tenha todas as colunas necessárias
+        required_columns = ['phone', 'payment_date', 'due_date', 'amount', 'status', 'notes']
+        
+        # Verificar se as colunas month_reference/year_reference ou month/year existem
+        if 'month_reference' not in df.columns and 'month' in df.columns:
+            df['month_reference'] = df['month']
+        if 'year_reference' not in df.columns and 'year' in df.columns:
+            df['year_reference'] = df['year']
+            
+        # Se não existir month_reference/year_reference nem month/year, criar a partir da due_date
+        if 'month_reference' not in df.columns and 'month' not in df.columns:
+            import pandas as pd
+            df['month_reference'] = pd.to_datetime(df['due_date']).dt.month
+        if 'year_reference' not in df.columns and 'year' not in df.columns:
+            import pandas as pd
+            df['year_reference'] = pd.to_datetime(df['due_date']).dt.year
+        
+        # Salvar o arquivo
         df.to_csv(PAYMENTS_FILE, index=False)
         
-        # Log para facilitar a depuração
-        st.debug(f"Arquivo de pagamentos salvo com {len(df)} registros")
+        # Verificar se o arquivo foi salvo corretamente
+        import os
+        if os.path.exists(PAYMENTS_FILE):
+            file_size = os.path.getsize(PAYMENTS_FILE)
+            st.success(f"Arquivo de pagamentos salvo com {len(df)} registros. Tamanho: {file_size} bytes")
+        else:
+            st.error("Falha ao salvar arquivo de pagamentos - arquivo não encontrado após salvamento")
     except Exception as e:
         st.error(f"Erro ao salvar dados de pagamentos: {e}")
         
@@ -82,7 +106,7 @@ def save_internships_data(df):
         df.to_csv(INTERNSHIPS_FILE, index=False)
         
         # Log para facilitar a depuração
-        st.debug(f"Arquivo de estágios salvo com {len(df)} registros")
+        st.success(f"Arquivo de estágios salvo com {len(df)} registros")
     except Exception as e:
         st.error(f"Erro ao salvar dados de estágios: {e}")
 
