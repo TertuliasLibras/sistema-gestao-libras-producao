@@ -32,10 +32,10 @@ def check_payments_file():
         else:
             print("\nATENÇÃO: Coluna 'status' NÃO encontrada!")
             
-            # Verificar se payment_status existe
-            if 'payment_status' in payments_df.columns:
-                print("Coluna 'payment_status' encontrada, renomeando para 'status'...")
-                payments_df = payments_df.rename(columns={'payment_status': 'status'})
+            # Verificar se status existe
+            if 'status' in payments_df.columns:
+                print("Coluna 'status' encontrada, renomeando para 'status'...")
+                payments_df = payments_df.rename(columns={'status': 'status'})
                 payments_df.to_csv('data/payments.csv', index=False)
                 print("Arquivo payments.csv atualizado com coluna renomeada.")
         
@@ -71,7 +71,7 @@ def check_payments_file():
         print(f"Erro ao processar arquivo: {str(e)}")
 
 def fix_relatorios_file():
-    """Verifica se existem arquivos .py com referências a payment_status"""
+    """Verifica se existem arquivos .py com referências a status"""
     errors_found = False
     
     # Verificar páginas
@@ -82,11 +82,11 @@ def fix_relatorios_file():
                 try:
                     with open(filepath, 'r') as f:
                         content = f.read()
-                        if "payment_status" in content:
-                            print(f"\nEncontrada referência a 'payment_status' em {filepath}")
+                        if "status" in content:
+                            print(f"\nEncontrada referência a 'status' em {filepath}")
                             errors_found = True
                             with open(filepath, 'w') as fw:
-                                new_content = content.replace("payment_status", "status")
+                                new_content = content.replace("status", "status")
                                 fw.write(new_content)
                                 print(f"Arquivo {filepath} corrigido")
                 except Exception as e:
@@ -98,18 +98,18 @@ def fix_relatorios_file():
             try:
                 with open(file, 'r') as f:
                     content = f.read()
-                    if "payment_status" in content:
-                        print(f"\nEncontrada referência a 'payment_status' em {file}")
+                    if "status" in content:
+                        print(f"\nEncontrada referência a 'status' em {file}")
                         errors_found = True
                         with open(file, 'w') as fw:
-                            new_content = content.replace("payment_status", "status")
+                            new_content = content.replace("status", "status")
                             fw.write(new_content)
                             print(f"Arquivo {file} corrigido")
             except Exception as e:
                 print(f"Erro ao processar {file}: {str(e)}")
     
     if not errors_found:
-        print("\nNenhuma referência a 'payment_status' encontrada nos arquivos .py")
+        print("\nNenhuma referência a 'status' encontrada nos arquivos .py")
     
     return errors_found
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     print("\n--- Verificando arquivo de pagamentos ---")
     check_payments_file()
     
-    print("\n--- Verificando referências a 'payment_status' em arquivos Python ---")
+    print("\n--- Verificando referências a 'status' em arquivos Python ---")
     fix_relatorios_file()
     
-    print("\nVerificação concluída. Execute este script no Render para corrigir o erro KeyError: 'payment_status'.")
+    print("\nVerificação concluída. Execute este script no Render para corrigir o erro KeyError: 'status'.")
