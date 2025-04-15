@@ -137,6 +137,13 @@ else:
             st.session_state['mostrar_configuracoes'] = False
             st.session_state['mostrar_backup'] = False
             st.rerun()
+            
+        if st.button("🧠 Análise de Desempenho", use_container_width=True):
+            st.session_state['nav_page'] = 'analise_desempenho'
+            st.session_state['mostrar_gerenciamento_usuarios'] = False
+            st.session_state['mostrar_configuracoes'] = False
+            st.session_state['mostrar_backup'] = False
+            st.rerun()
         
         # Opções de usuário (para todos)
         st.markdown("### Opções de Usuário")
@@ -385,7 +392,8 @@ else:
                     'alunos': '1_Alunos.py',
                     'pagamentos': 'pages/pagamentos.py',
                     'estagios': 'pages/estagios.py',
-                    'relatorios': 'pages/relatorios.py'
+                    'relatorios': 'pages/relatorios.py',
+                    'analise_desempenho': 'pages/analise_desempenho.py'
                 }
                 
                 # Caminho do arquivo da página
@@ -532,6 +540,10 @@ else:
             # Carregar página de relatórios
             load_page_module('relatorios')
             
+        elif st.session_state['nav_page'] == 'analise_desempenho':
+            # Carregar página de análise de desempenho
+            load_page_module('analise_desempenho')
+            
         else:  # dashboard é o padrão
             # Dashboard
             st.header("Dashboard")
@@ -603,8 +615,8 @@ else:
             with col2:
                 # Payment status distribution
                 if not payments_df.empty:
-                    payment_status = payments_df['status'].value_counts().reset_index()
-                    payment_status.columns = ['Status', 'Quantidade']
+                    status = payments_df['status'].value_counts().reset_index()
+                    status.columns = ['Status', 'Quantidade']
                     
                     # Map status to Portuguese
                     status_map = {
@@ -613,10 +625,10 @@ else:
                         'overdue': 'Atrasado',
                         'canceled': 'Cancelado'
                     }
-                    payment_status['Status'] = payment_status['Status'].map(status_map)
+                    status['Status'] = status['Status'].map(status_map)
                     
                     fig = px.pie(
-                        payment_status, 
+                        status, 
                         names='Status', 
                         values='Quantidade',
                         title='Distribuição de Status de Pagamento',
@@ -717,4 +729,5 @@ else:
             - **Pagamentos**: Registro e controle de pagamentos
             - **Estágios**: Registro e acompanhamento de estágios
             - **Relatórios**: Relatórios detalhados e exportação de dados
+            - **Análise de Desempenho**: Insights e análises baseadas nos dados dos alunos
             """)
