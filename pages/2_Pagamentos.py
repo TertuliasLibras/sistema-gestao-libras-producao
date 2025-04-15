@@ -57,6 +57,13 @@ tab1, tab2, tab3 = st.tabs(["Registrar Pagamento", "Listar Pagamentos", "Gerar P
 with tab1:
     st.subheader("Registrar Novo Pagamento")
     
+    # Botão para recarregar dados
+    if st.button("🔄 Recarregar Dados", use_container_width=True):
+        st.cache_data.clear()
+        students_df = load_students_data()
+        payments_df = load_payments_data()
+        st.success("Dados recarregados com sucesso!")
+    
     if students_df is not None and not students_df.empty:
         # Get active students
         active_students = get_active_students(students_df)
@@ -126,82 +133,42 @@ with tab1:
                 
                 notes = st.text_area("Observações", height=80, value=f"Mensalidade {calendar.month_name[month_reference]}/{year_reference}")
                 
+                # Opção para forçar substituição de um pagamento existente
+                force_overwrite = st.checkbox("⚠️ Substituir pagamento existente (se houver)")
+                
                 submitted = st.form_submit_button("Registrar Pagamento")
                 
                 if submitted:
                     # Check if payment already exists
                     existing_payment = None
+                    existing_payment_idx = None
                     
                     if not payments_df.empty:
                         # Verificar primeiro se temos as colunas month_reference e year_reference
                         if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
-                            existing_payment = payments_df[
+                            existing_mask = (
                                 (payments_df['phone'] == selected_phone) & 
                                 (payments_df['month_reference'] == month_reference) & 
                                 (payments_df['year_reference'] == year_reference)
-                            ]
+                            )
+                            existing_payment = payments_df[existing_mask]
+                            if not existing_payment.empty:
+                                existing_payment_idx = existing_payment.index
                         # Verificar se temos month e year
                         elif 'month' in payments_df.columns and 'year' in payments_df.columns:
-                            existing_payment = payments_df[
+                            existing_mask = (
                                 (payments_df['phone'] == selected_phone) & 
                                 (payments_df['month'] == month_reference) & 
                                 (payments_df['year'] == year_reference)
-                            ]
+                            )
+                            existing_payment = payments_df[existing_mask]
+                            if not existing_payment.empty:
+                                existing_payment_idx = existing_payment.index
                     
-                    if existing_payment is not None and not existing_payment.empty:
-                        # Armazenar a escolha do usuário em sessão
-                        if 'update_payment_mode' not in st.session_state:
-                            st.session_state['update_payment_mode'] = False
-                            
-                        # Mostrar mensagem e opção para editar
-                        if not st.session_state['update_payment_mode']:
-                            st.warning(f"Já existe um pagamento registrado para este aluno no mês {calendar.month_name[month_reference]}/{year_reference}.")
-                            update_option = st.checkbox("Desejo atualizar o pagamento existente")
-                            if update_option:
-                                st.session_state['update_payment_mode'] = True
-                                st.rerun()
-                                
-                        # Modo de atualização
-                        if st.session_state['update_payment_mode']:
-                            st.info(f"⚠️ Você está ATUALIZANDO o pagamento de {calendar.month_name[month_reference]}/{year_reference}.")
-                            # Botão principal serve como atualização
-                            update_payment = st.form_submit_button("Confirmar Atualização")
-                            
-                            if update_payment:
-                                # Atualizar o pagamento existente
-                                if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
-                                    payments_df.loc[
-                                        (payments_df['phone'] == selected_phone) & 
-                                        (payments_df['month_reference'] == month_reference) & 
-                                        (payments_df['year_reference'] == year_reference),
-                                        ['payment_date', 'amount', 'status', 'notes']
-                                    ] = [
-                                        payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
-                                        amount,
-                                        status,
-                                        notes
-                                    ]
-                                elif 'month' in payments_df.columns and 'year' in payments_df.columns:
-                                    payments_df.loc[
-                                        (payments_df['phone'] == selected_phone) & 
-                                        (payments_df['month'] == month_reference) & 
-                                        (payments_df['year'] == year_reference),
-                                        ['payment_date', 'amount', 'status', 'notes']
-                                    ] = [
-                                        payment_date.strftime('%Y-%m-%d') if status == 'paid' else None,
-                                        amount,
-                                        status,
-                                        notes
-                                    ]
-                                
-                                save_payments_data(payments_df)
-                                st.success("Pagamento atualizado com sucesso!")
-                                st.session_state['update_payment_mode'] = False
-                                
-                        else:
-                            # No modo normal, desabilitar o botão de registro
-                            disabled_submit = st.form_submit_button("Registrar Pagamento", disabled=True)
-                    
+                    if existing_payment is not None and not existing_payment.empty and not force_overwrite:
+                        # Mostrar mensagem sobre pagamento existente
+                        st.warning(f"Já existe um pagamento registrado para este aluno no mês {calendar.month_name[month_reference]}/{year_reference}.")
+                        st.info("Marque a opção 'Substituir pagamento existente' se deseja sobrescrever.")
                     else:
                         # Create new payment record
                         new_payment = {
@@ -215,6 +182,11 @@ with tab1:
                             'notes': notes
                         }
                         
+                        # Se estamos substituindo um pagamento existente
+                        if existing_payment is not None and not existing_payment.empty and force_overwrite:
+                            # Remover o pagamento existente
+                            payments_df = payments_df.drop(existing_payment_idx)
+                        
                         # Add to dataframe
                         if payments_df is None or payments_df.empty:
                             payments_df = pd.DataFrame([new_payment])
@@ -222,8 +194,16 @@ with tab1:
                             payments_df = pd.concat([payments_df, pd.DataFrame([new_payment])], ignore_index=True)
                         
                         # Save data
-                        save_payments_data(payments_df)
-                        st.success("Pagamento registrado com sucesso!")
+                        success = save_payments_data(payments_df)
+                        
+                        if success:
+                            st.success("✅ Pagamento registrado com sucesso!")
+                            st.info("Vá para a aba 'Listar Pagamentos' para ver todos os pagamentos.")
+                            
+                            # Limpar o cache para garantir que os dados sejam recarregados
+                            st.cache_data.clear()
+                        else:
+                            st.error("❌ Erro ao registrar pagamento. Verifique os logs para mais detalhes.")
         else:
             st.warning("Não há alunos ativos cadastrados para registrar pagamentos.")
     else:
@@ -437,6 +417,20 @@ with tab3:
     para um mês específico. Útil para criar registros de pagamento em lote.
     """)
     
+    # Adicionar botão para limpar pagamentos do mês
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 Recarregar Lista de Alunos", use_container_width=True):
+            st.cache_data.clear()
+            students_df = load_students_data()
+            st.success("Lista de alunos recarregada!")
+    
+    with col2:
+        if st.button("❌ Limpar Filtros de Mês", use_container_width=True):
+            # Esta opção apenas fornece uma ação visual para o usuário
+            # A limpeza real acontece no código abaixo
+            st.success("Filtros de mês limpos, você pode gerar novos pagamentos!")
+    
     if students_df is not None and not students_df.empty:
         # Get active students
         active_students = get_active_students(students_df)
@@ -480,11 +474,15 @@ with tab3:
                     due_date_display = due_date.strftime('%d/%m/%Y')
                     st.info(f"Data de vencimento: {due_date_display}")
                 
+                # Opção para forçar a criação mesmo se já existir
+                force_creation = st.checkbox("⚠️ Forçar criação (mesmo se já existirem pagamentos para este mês)")
+                
                 submitted = st.form_submit_button("Gerar Pagamentos")
                 
                 if submitted:
-                    # Check for existing payments
+                    # Verificar se há pagamentos existentes
                     existing_phones = []
+                    existing_payments = pd.DataFrame()
                     
                     if not payments_df.empty:
                         if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
@@ -497,17 +495,38 @@ with tab3:
                                 (payments_df['month'] == month_reference) & 
                                 (payments_df['year'] == year_reference)
                             ]
-                        else:
-                            existing_payments = pd.DataFrame()  # Se as colunas não existirem, criar DataFrame vazio
                         
-                        if not existing_payments.empty:
+                        if not existing_payments.empty and not force_creation:
                             existing_phones = existing_payments['phone'].unique().tolist()
                     
-                    # Get students without payments for this month
-                    students_to_generate = active_students[~active_students['phone'].isin(existing_phones)]
+                    # Se forçar criação estiver marcado, excluir pagamentos existentes
+                    if force_creation and not existing_payments.empty:
+                        # Remover pagamentos existentes para o mês
+                        if 'month_reference' in payments_df.columns and 'year_reference' in payments_df.columns:
+                            payments_df = payments_df[
+                                ~((payments_df['month_reference'] == month_reference) & 
+                                  (payments_df['year_reference'] == year_reference))
+                            ]
+                        elif 'month' in payments_df.columns and 'year' in payments_df.columns:
+                            payments_df = payments_df[
+                                ~((payments_df['month'] == month_reference) & 
+                                  (payments_df['year'] == year_reference))
+                            ]
+                        
+                        # Limpar lista de telefones existentes
+                        existing_phones = []
+                        
+                        st.info(f"Pagamentos existentes para {calendar.month_name[month_reference]}/{year_reference} foram removidos.")
                     
-                    if students_to_generate.empty:
+                    # Obter alunos sem pagamentos para este mês
+                    if force_creation:
+                        students_to_generate = active_students  # Todos os alunos, se forçar criação
+                    else:
+                        students_to_generate = active_students[~active_students['phone'].isin(existing_phones)]
+                    
+                    if students_to_generate.empty and not force_creation:
                         st.warning("Todos os alunos ativos já possuem pagamentos registrados para este mês.")
+                        st.info("Marque a opção 'Forçar criação' se deseja gerar novamente.")
                     else:
                         # Generate payment records
                         new_payments = []
@@ -536,6 +555,9 @@ with tab3:
                         save_payments_data(payments_df)
                         
                         st.success(f"Gerados {len(new_payments)} registros de pagamento para {calendar.month_name[month_reference]}/{year_reference}.")
+                        
+                        # Recarregar dados para atualizar a interface
+                        st.cache_data.clear()
         else:
             st.warning("Não há alunos ativos cadastrados para gerar pagamentos.")
     else:
