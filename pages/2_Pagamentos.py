@@ -219,15 +219,39 @@ with tab2:
         payments_df = load_payments_data()
         st.success("Dados de pagamentos recarregados!")
         
+    # Botões para filtros rápidos
+    st.write("Filtros rápidos:")
+    quick_filter_cols = st.columns(4)
+    with quick_filter_cols[0]:
+        if st.button("🔄 Todos os pagamentos", use_container_width=True):
+            st.session_state['quick_status_filter'] = ["Todos"]
+            st.rerun()
+    with quick_filter_cols[1]:
+        if st.button("✅ Apenas pagos", use_container_width=True):
+            st.session_state['quick_status_filter'] = ["Pago"]
+            st.rerun()
+    with quick_filter_cols[2]:
+        if st.button("⏳ Apenas pendentes", use_container_width=True):
+            st.session_state['quick_status_filter'] = ["Pendente"]
+            st.rerun()
+    with quick_filter_cols[3]:
+        if st.button("⚠️ Apenas atrasados", use_container_width=True):
+            st.session_state['quick_status_filter'] = ["Atrasado"]
+            st.rerun()
+            
+    # Inicializar filtro rápido se não existir
+    if 'quick_status_filter' not in st.session_state:
+        st.session_state['quick_status_filter'] = ["Todos"]
+            
     # Filter options
-    st.write("Filtros:")
+    st.write("Filtros detalhados:")
     col1, col2, col3 = st.columns(3)
     
     with col1:
         status_filter = st.multiselect(
             "Status", 
             options=["Todos", "Pago", "Pendente", "Atrasado", "Cancelado"],
-            default=["Todos"]
+            default=st.session_state['quick_status_filter']
         )
     
     with col2:
