@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import re
 import pandas as pd
 
 def fix_payment_status_references():
@@ -60,3 +61,42 @@ def fix_payment_status_references():
             print(f"Erro ao processar payments.csv: {str(e)}")
 
     return files_fixed
+
+def fix_estagios_format_students():
+    """
+    Corrige o problema 'AttributeError: 'int' object has no attribute 'split'' 
+    na função format_students do arquivo 3_Estagios.py
+    """
+    if not os.path.exists("pages/3_Estagios.py"):
+        return False
+    
+    try:
+        with open("pages/3_Estagios.py", 'r') as f:
+            content = f.read()
+        
+        # Procurar a função format_students
+        if "def format_students" in content:
+            # Corrigir o código para verificar se o valor é string antes de chamar .split()
+            updated_content = re.sub(
+                r'(def format_students\(students_str\):.*?\n.*?if not students_str or pd\.isna\(students_str\):.*?\n.*?return "".*?\n\n.*?)student_phones = students_str\.split\(\',\'\)',
+                r'\1# Converter para string se não for string\n                if not isinstance(students_str, str):\n                    students_str = str(students_str)\n                \n                student_phones = students_str.split(\',\')',
+                content, 
+                flags=re.DOTALL
+            )
+            
+            # Se a substituição com regex não funcionou, tente uma mais simples
+            if updated_content == content:
+                updated_content = content.replace(
+                    "student_phones = students_str.split(',')",
+                    "# Converter para string se não for string\n                if not isinstance(students_str, str):\n                    students_str = str(students_str)\n                \n                student_phones = students_str.split(',')"
+                )
+            
+            # Verificar se o conteúdo foi realmente alterado
+            if updated_content != content:
+                with open("pages/3_Estagios.py", 'w') as f:
+                    f.write(updated_content)
+                return True
+    except Exception as e:
+        print(f"Erro ao corrigir format_students em 3_Estagios.py: {str(e)}")
+        
+    return False
