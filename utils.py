@@ -216,41 +216,50 @@ def calculate_monthly_revenue(students_df, payments_df, month, year):
 
 def get_student_internship_hours(internships_df, phone):
     """Calculate total internship hours for a student"""
-    if internships_df.empty:
+    if internships_df is None or internships_df.empty:
         return 0
     
     # Verificar se as colunas necessárias existem
-    if not all(col in internships_df.columns for col in ['phone', 'hours']):
+    if not all(col in internships_df.columns for col in ['students', 'duration_hours']):
         return 0
     
-    # Filtrar estágios do estudante
-    student_internships = internships_df[internships_df['phone'] == phone]
+    # Filtrar estágios em que o aluno participou
+    total_hours = 0
     
-    if student_internships.empty:
-        return 0
+    for _, row in internships_df.iterrows():
+        # Garantir que students é uma string
+        students_str = str(row['students']) if not pd.isna(row['students']) else ""
+        student_phones = [s.strip() for s in students_str.split(',')]
+        
+        if phone in student_phones:
+            total_hours += row['duration_hours']
     
-    # Calcular total de horas
-    return student_internships['hours'].sum()
+    return total_hours
 
 def get_student_internship_topics(internships_df, phone):
     """Get all internship topics for a student"""
-    if internships_df.empty:
+    if internships_df is None or internships_df.empty:
         return []
     
     # Verificar se as colunas necessárias existem
-    if not all(col in internships_df.columns for col in ['phone', 'topic']):
+    if not all(col in internships_df.columns for col in ['students', 'topic']):
         return []
     
-    # Filtrar estágios do estudante
-    student_internships = internships_df[internships_df['phone'] == phone]
+    # Filtrar estágios em que o aluno participou
+    topics = []
     
-    if student_internships.empty:
-        return []
+    for _, row in internships_df.iterrows():
+        # Garantir que students é uma string
+        students_str = str(row['students']) if not pd.isna(row['students']) else ""
+        student_phones = [s.strip() for s in students_str.split(',')]
+        
+        if phone in student_phones:
+            topics.append(row['topic'])
     
-    # Obter tópicos únicos
-    topics = student_internships['topic'].unique().tolist()
+    # Remover duplicados
+    unique_topics = list(set(topics))
     
-    return topics
+    return unique_topics
 
 def validate_phone(phone):
     """Validate if phone number is in correct format"""
@@ -360,7 +369,7 @@ def generate_monthly_payments(student_phone, monthly_fee, enrollment_date, payme
             due_date = datetime(month_date.year, month_date.month, min(due_day, last_day))
         
         # Verificar se o pagamento está atrasado
-        payment_status = "pending"
+        status = "pending"
         today = datetime.now().date()
         
         # Obter a data de vencimento como date
@@ -386,10 +395,10 @@ def generate_monthly_payments(student_phone, monthly_fee, enrollment_date, payme
             today_str = today.strftime('%Y-%m-%d')
             
             if due_date_str < today_str:
-                payment_status = "pending"  # Começar como pendente mesmo se atrasado
+                status = "pending"  # Começar como pendente mesmo se atrasado
         except Exception as e:
             # Em caso de erro, manter como pendente
-            payment_status = "pending"
+            status = "pending"
         
         # Formatar a data de vencimento com tratamento de erro
         try:
@@ -406,7 +415,7 @@ def generate_monthly_payments(student_phone, monthly_fee, enrollment_date, payme
             "amount": monthly_fee,
             "due_date": due_date_formatted,
             "payment_date": None,
-            "status": payment_status,
+            "status": status,
             "payment_method": "",
             "month": month_date.month,
             "year": month_date.year,
