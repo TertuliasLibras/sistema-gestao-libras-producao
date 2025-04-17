@@ -1,102 +1,91 @@
+"""
+Este arquivo contém funções para corrigir problemas comuns em arquivos Python.
+Estas correções são aplicadas automaticamente quando o aplicativo é iniciado.
+"""
+
 import os
-from datetime import datetime
 import re
-import pandas as pd
 
 def fix_payment_status_references():
     """
     Função para corrigir referências a 'payment_status' em todos os arquivos Python.
     Será executada automaticamente na inicialização do aplicativo.
     """
-    files_fixed = []
-
-    # Verificar diretório principal
-    for file in os.listdir("."):
-        if file.endswith(".py") and file != "auto_fix.py":
-            try:
-                file_path = os.path.join(".", file)
-                with open(file_path, 'r') as f:
-                    content = f.read()
-                
-                if "payment_status" in content:
-                    new_content = content.replace("payment_status", "status")
-                    with open(file_path, 'w') as f:
-                        f.write(new_content)
-                    files_fixed.append(file)
-            except Exception as e:
-                print(f"Erro ao processar {file}: {str(e)}")
-
-    # Verificar diretório pages
-    if os.path.exists("pages"):
-        for file in os.listdir("pages"):
-            if file.endswith(".py"):
-                try:
-                    file_path = os.path.join("pages", file)
-                    with open(file_path, 'r') as f:
-                        content = f.read()
+    fixed_files = []
+    
+    # Diretórios a serem verificados
+    directories = ['.', 'pages']
+    
+    for directory in directories:
+        if os.path.exists(directory):
+            for filename in os.listdir(directory):
+                if filename.endswith('.py'):
+                    filepath = os.path.join(directory, filename)
+                    with open(filepath, 'r', encoding='utf-8') as file:
+                        content = file.read()
                     
+                    # Verifique por referências a 'payment_status'
                     if "payment_status" in content:
-                        new_content = content.replace("payment_status", "status")
-                        with open(file_path, 'w') as f:
-                            f.write(new_content)
-                        files_fixed.append(f"pages/{file}")
-                except Exception as e:
-                    print(f"Erro ao processar pages/{file}: {str(e)}")
+                        # Substitua 'payment_status' por 'status'
+                        new_content = re.sub(r'(\[|\s|\.)payment_status(\s|\]|\)|\'|\")', r'\1status\2', content)
+                        
+                        # Se houve alteração, salve o arquivo
+                        if new_content != content:
+                            with open(filepath, 'w', encoding='utf-8') as file:
+                                file.write(new_content)
+                            fixed_files.append(filepath)
+    
+    return fixed_files
 
-    # Verificar se há pagamentos com status 'paid' sem data de pagamento
-    if os.path.exists("data/payments.csv"):
-        try:
-            payments_df = pd.read_csv("data/payments.csv")
-            if 'status' in payments_df.columns and 'payment_date' in payments_df.columns:
-                # Encontrar pagamentos com status 'paid' sem data de pagamento
-                paid_no_date = payments_df[(payments_df['status'] == 'paid') & (payments_df['payment_date'].isna())]
-                
-                if not paid_no_date.empty:
-                    # Adicionar data atual para pagamentos sem data
-                    today = datetime.now().strftime('%Y-%m-%d')
-                    payments_df.loc[(payments_df['status'] == 'paid') & (payments_df['payment_date'].isna()), 'payment_date'] = today
-                    payments_df.to_csv("data/payments.csv", index=False)
-                    files_fixed.append("data/payments.csv (corrigidos pagamentos sem data)")
-        except Exception as e:
-            print(f"Erro ao processar payments.csv: {str(e)}")
-
-    return files_fixed
 
 def fix_estagios_format_students():
     """
     Corrige o problema 'AttributeError: 'int' object has no attribute 'split'' 
     na função format_students do arquivo 3_Estagios.py
     """
-    if not os.path.exists("pages/3_Estagios.py"):
-        return False
+    filepath = 'pages/3_Estagios.py'
+    fixed = False
     
-    try:
-        with open("pages/3_Estagios.py", 'r') as f:
-            content = f.read()
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as file:
+            content = file.read()
         
-        # Procurar a função format_students
-        if "def format_students" in content:
-            # Corrigir o código para verificar se o valor é string antes de chamar .split()
-            updated_content = re.sub(
-                r'(def format_students\(students_str\):.*?\n.*?if not students_str or pd\.isna\(students_str\):.*?\n.*?return "".*?\n\n.*?)student_phones = students_str\.split\(\',\'\)',
-                r'\1# Converter para string se não for string\n                if not isinstance(students_str, str):\n                    students_str = str(students_str)\n                \n                student_phones = students_str.split(\',\')',
-                content, 
-                flags=re.DOTALL
-            )
+        # Localize a função format_students
+        pattern = r'def format_students\(students_str\):(.*?)return'
+        match = re.search(pattern, content, re.DOTALL)
+        
+        if match:
+            func_body = match.group(1)
             
-            # Se a substituição com regex não funcionou, tente uma mais simples
-            if updated_content == content:
-                updated_content = content.replace(
-                    "student_phones = students_str.split(',')",
-                    "# Converter para string se não for string\n                if not isinstance(students_str, str):\n                    students_str = str(students_str)\n                \n                student_phones = students_str.split(',')"
+            # Verifique se já contém a verificação de tipo
+            if "isinstance(students_str, str)" not in func_body:
+                # Adicione a verificação de tipo
+                new_func_body = func_body.replace(
+                    'if not students_str or pd.isna(students_str):',
+                    'if not students_str or pd.isna(students_str):\n                    return ""\n                \n                # Se o valor não for string (for inteiro), converta para string\n                if not isinstance(students_str, str):\n                    students_str = str(students_str)'
                 )
-            
-            # Verificar se o conteúdo foi realmente alterado
-            if updated_content != content:
-                with open("pages/3_Estagios.py", 'w') as f:
-                    f.write(updated_content)
-                return True
-    except Exception as e:
-        print(f"Erro ao corrigir format_students em 3_Estagios.py: {str(e)}")
-        
-    return False
+                
+                # Substitua o corpo da função
+                new_content = content.replace(func_body, new_func_body)
+                
+                # Corrija também a função lambda que conta alunos
+                if "lambda x: len(x.split(','))" in new_content:
+                    new_content = new_content.replace(
+                        "lambda x: len(x.split(',')) if not pd.isna(x) and x.strip() else 0",
+                        "lambda x: len(str(x).split(',')) if not pd.isna(x) and (isinstance(x, str) and x.strip() or not isinstance(x, str)) else 0"
+                    )
+                
+                # Corrija também na seção "Horas por Aluno"
+                if "students_in_internship = str(internship['students']).split(',')" not in new_content:
+                    new_content = new_content.replace(
+                        "students_in_internship = internship['students'].split(',')",
+                        "students_str = str(internship['students']) if not pd.isna(internship['students']) else ''\n                students_in_internship = students_str.split(',')"
+                    )
+                
+                # Salve as alterações
+                with open(filepath, 'w', encoding='utf-8') as file:
+                    file.write(new_content)
+                
+                fixed = True
+    
+    return fixed
