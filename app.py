@@ -4,6 +4,22 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import calendar
+
+# Importar e executar correções automáticas
+try:
+    # Importar as funções de correção
+    from auto_fix import fix_payment_status_references, fix_estagios_format_students
+    
+    # Corrigir referências a 'payment_status' em todos os arquivos
+    fixed_files = fix_payment_status_references()
+    if fixed_files:
+        print("Corrigidas referências a 'payment_status' nos arquivos:", fixed_files)
+    
+    # Corrigir o problema em format_students na página de estágios
+    if fix_estagios_format_students():
+        print("Corrigido AttributeError em format_students na página de estágios")
+except Exception as e:
+    print("Erro ao executar correções automáticas:", str(e))
 from utils import (
     load_students_data, 
     load_payments_data, 
@@ -17,21 +33,7 @@ from utils import (
 from login import verificar_autenticacao, mostrar_pagina_login, pagina_gerenciar_usuarios, pagina_trocar_senha, logout
 from config import get_logo_path, load_config, save_config, save_uploaded_logo
 
-# Importar e executar correções automáticas
-try:
-    # Importar as funções de correção
-    from auto_fix import fix_status_references, fix_estagios_format_students
-    
-    # Corrigir referências a 'status' em todos os arquivos
-    fixed_files = fix_status_references()
-    if fixed_files:
-        print("Corrigidas referências a 'status' nos arquivos:", fixed_files)
-    
-    # Corrigir o problema em format_students na página de estágios
-    if fix_estagios_format_students():
-        print("Corrigido AttributeError em format_students na página de estágios")
-except Exception as e:
-    print("Erro ao executar correções automáticas:", str(e))
+
 
 # Set page configuration
 st.set_page_config(
