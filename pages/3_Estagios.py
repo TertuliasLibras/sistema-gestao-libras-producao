@@ -178,6 +178,10 @@ with tab2:
                 if not students_str or pd.isna(students_str):
                     return ""
                 
+                # Converter para string se não for string
+                if not isinstance(students_str, str):
+                    students_str = str(students_str)
+                
                 student_phones = students_str.split(',')
                 student_names = []
                 
