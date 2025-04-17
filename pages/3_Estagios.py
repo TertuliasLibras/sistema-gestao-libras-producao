@@ -196,9 +196,11 @@ with tab2:
             
             display_df['student_names'] = display_df['students'].apply(format_students)
             
-            # Count students
+            # Count students - CORRIGIDO PARA VERIFICAR SE É STRING
             display_df['student_count'] = display_df['students'].apply(
-                lambda x: len(x.split(',')) if not pd.isna(x) and x.strip() else 0
+                lambda x: len(str(x).split(',')) if not pd.isna(x) and isinstance(x, str) and x.strip() 
+                else (len(str(x).split(',')) if not pd.isna(x) and not isinstance(x, str) 
+                      else 0)
             )
             
             # Display dataframe
@@ -255,7 +257,9 @@ with tab3:
             student_topics = []
             
             for _, internship in internships_df.iterrows():
-                students_in_internship = str(internship['students']).split(',')
+                # Garantir que students_in_internship seja string
+                students_str = str(internship['students']) if not pd.isna(internship['students']) else ""
+                students_in_internship = students_str.split(',')
                 students_in_internship = [s.strip() for s in students_in_internship]
                 
                 if student['phone'] in students_in_internship:
