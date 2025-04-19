@@ -396,9 +396,12 @@ def pagina_trocar_senha():
                     usuario_atualizado = usuario_encontrado.copy()
                     usuario_atualizado['password_hash'] = nova_senha_hash
                     
-                    # Salvar no banco de dados - usando username como identificador
-                    # ao invés de id que pode não existir em alguns casos
-                    save_user(usuario_atualizado)
+                    # Salvar no banco de dados usando o id original
+                    if 'id' in usuario_encontrado:
+                        update_user(usuario_encontrado['id'], usuario_atualizado)
+                    else:
+                        # Tratamento alternativo se não houver ID
+                        save_user(usuario_atualizado)
                     
                     st.success("Senha atualizada com sucesso!")
                     # Iniciar um contador para retornar ao dashboard
