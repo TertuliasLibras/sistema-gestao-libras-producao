@@ -8,7 +8,7 @@ import re
 
 def fix_payment_status_references():
     """
-    Função para corrigir referências a 'payment_status' em todos os arquivos Python.
+    Função para corrigir referências a 'status' em todos os arquivos Python.
     Será executada automaticamente na inicialização do aplicativo.
     """
     fixed_files = []
@@ -24,10 +24,28 @@ def fix_payment_status_references():
                     with open(filepath, 'r', encoding='utf-8') as file:
                         content = file.read()
                     
-                    # Verifique por referências a 'payment_status'
-                    if "payment_status" in content:
-                        # Substitua 'payment_status' por 'status'
-                        new_content = re.sub(r'(\[|\s|\.)payment_status(\s|\]|\)|\'|\")', r'\1status\2', content)
+                    # Verifique por referências a 'status'
+                    if "status" in content:
+                        # Substitua 'status' por 'status' em todas as variações e contextos possíveis
+                        patterns = [
+                            # Casos comuns dentro de colchetes, após ponto, etc.
+                            (r'(\[|\s|\.)payment_status(\s|\]|\)|\'|\")', r'\1status\2'),
+                            # Casos específicos para analise_desempenho.py
+                            (r'payment_status\.columns', r'status.columns'),
+                            # Casos para variáveis e definições
+                            (r'payment_status\s*=', r'status ='),
+                            # Casos como argumento de função
+                            (r'(\(|\,\s*)payment_status(\s*\)|\s*\,)', r'\1status\2'),
+                            # Outros casos gerais
+                            (r'\"payment_status\"', r'"status"'),
+                            (r'\'payment_status\'', r"'status'"),
+                            (r'\[\"payment_status\"\]', r'["status"]'),
+                            (r'\[\'payment_status\'\]', r"['status']"),
+                        ]
+                        
+                        new_content = content
+                        for pattern, replacement in patterns:
+                            new_content = re.sub(pattern, replacement, new_content)
                         
                         # Se houve alteração, salve o arquivo
                         if new_content != content:
