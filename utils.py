@@ -21,6 +21,23 @@ def load_students_data():
         st.error(f"Erro ao carregar dados dos alunos: {e}")
         return pd.DataFrame()
 
+def get_payment_status_column(df):
+    """
+    Determina qual nome de coluna usar para status de pagamento.
+    Algumas partes do código usam 'status' e outras usam 'status'.
+    Esta função verifica qual coluna existe e retorna o nome adequado.
+    """
+    if df is None or df.empty:
+        return 'status'  # padrão
+        
+    # Verifica quais colunas existem
+    if 'status' in df.columns:
+        return 'status'
+    elif 'status' in df.columns:
+        return 'status'
+    else:
+        return 'status'  # padrão, caso nenhuma das colunas exista
+        
 def load_payments_data():
     """Load payment data from CSV file"""
     try:
@@ -174,8 +191,12 @@ def get_overdue_payments(students_df, payments_df):
     
     # Obter pagamentos em aberto e atrasados
     today = datetime.now().date()
+    
+    # Usar a função get_payment_status_column para obter o nome correto da coluna
+    status_column = get_payment_status_column(payments_df)
+    
     overdue_payments = payments_df[
-        (payments_df['status'] == 'pending') & 
+        (payments_df[status_column] == 'pending') & 
         (pd.to_datetime(payments_df['due_date']).dt.date < today)
     ]
     
