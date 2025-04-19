@@ -204,24 +204,31 @@ if payments_df is not None and not payments_df.empty:
                 )
     
     # Status dos pagamentos
-    payment_status = payments_df['status'].value_counts().reset_index()
-    payment_status.columns = ['Status', 'Contagem']
-    payment_status['Status'] = payment_status['Status'].map({
+    # Usar a função get_payment_status_column para obter o nome correto da coluna
+    from utils import get_payment_status_column
+    status_column = get_payment_status_column(payments_df)
+    
+    status = payments_df[status_column].value_counts().reset_index()
+    status.columns = ['Status', 'Contagem']
+    status['Status'] = status['Status'].map({
         'paid': 'Pago',
         'pending': 'Pendente',
         'overdue': 'Atrasado',
         'canceled': 'Cancelado'
     })
     
-    fig = px.pie(payment_status, values='Contagem', names='Status', 
+    fig = px.pie(status, values='Contagem', names='Status', 
                  title='Distribuição de Pagamentos por Status',
                  color_discrete_sequence=px.colors.sequential.Viridis)
     st.plotly_chart(fig, use_container_width=True)
     
     # Identificar pagamentos atrasados
     today = datetime.now().date()
+    # Usar a função get_payment_status_column para obter o nome correto da coluna
+    status_column = get_payment_status_column(payments_df)
+    
     overdue_payments = payments_df[
-        (payments_df['status'] == 'pending') & 
+        (payments_df[status_column] == 'pending') & 
         (pd.to_datetime(payments_df['due_date']).dt.date < today)
     ]
     
@@ -379,9 +386,13 @@ if selected_student:
         
         if not student_payments.empty:
             # Status dos pagamentos do aluno
-            student_payment_status = student_payments['status'].value_counts().reset_index()
-            student_payment_status.columns = ['Status', 'Contagem']
-            student_payment_status['Status'] = student_payment_status['Status'].map({
+            # Usar a função get_payment_status_column para obter o nome correto da coluna
+            from utils import get_payment_status_column
+            status_column = get_payment_status_column(student_payments)
+            
+            student_status = student_payments[status_column].value_counts().reset_index()
+            student_status.columns = ['Status', 'Contagem']
+            student_status['Status'] = student_status['Status'].map({
                 'paid': 'Pago',
                 'pending': 'Pendente',
                 'overdue': 'Atrasado',
@@ -389,7 +400,7 @@ if selected_student:
             })
             
             fig = px.pie(
-                student_payment_status, 
+                student_status, 
                 values='Contagem', 
                 names='Status', 
                 title='Status dos Pagamentos',
@@ -397,9 +408,10 @@ if selected_student:
             )
             st.plotly_chart(fig, use_container_width=True)
             
-            # Verificar pagamentos atrasados
-            overdue_count = len(student_payments[student_payments['status'] == 'overdue'])
-            pending_count = len(student_payments[student_payments['status'] == 'pending'])
+            # Verificar pagamentos atrasados usando a coluna correta
+            status_column = get_payment_status_column(student_payments)
+            overdue_count = len(student_payments[student_payments[status_column] == 'overdue'])
+            pending_count = len(student_payments[student_payments[status_column] == 'pending'])
             
             if overdue_count > 0:
                 render_insight_card(
@@ -408,8 +420,8 @@ if selected_student:
                     "critical"
                 )
             
-            # Verificar pontualidade nos pagamentos
-            paid_payments = student_payments[student_payments['status'] == 'paid']
+            # Verificar pontualidade nos pagamentos usando a coluna adequada
+            paid_payments = student_payments[student_payments[status_column] == 'paid']
             if not paid_payments.empty and 'payment_date' in paid_payments.columns and 'due_date' in paid_payments.columns:
                 # Remover NAs
                 paid_with_dates = paid_payments.dropna(subset=['payment_date', 'due_date'])
@@ -494,15 +506,19 @@ if selected_student:
         student_payments = payments_df[payments_df['phone'] == selected_student]
         
         if not student_payments.empty:
+            # Obter a coluna correta de status
+            from utils import get_payment_status_column
+            status_column = get_payment_status_column(student_payments)
+            
             # Verificar pagamentos atrasados
-            overdue_count = len(student_payments[student_payments['status'] == 'overdue'])
-            pending_count = len(student_payments[student_payments['status'] == 'pending'])
+            overdue_count = len(student_payments[student_payments[status_column] == 'overdue'])
+            pending_count = len(student_payments[student_payments[status_column] == 'pending'])
             
             if overdue_count > 0:
                 recomendacoes.append(f"Entre em contato para regularizar os {overdue_count} pagamentos em atraso.")
             
             # Verificar pontualidade
-            paid_payments = student_payments[student_payments['status'] == 'paid']
+            paid_payments = student_payments[student_payments[status_column] == 'paid']
             if not paid_payments.empty and 'payment_date' in paid_payments.columns and 'due_date' in paid_payments.columns:
                 paid_with_dates = paid_payments.dropna(subset=['payment_date', 'due_date'])
                 
@@ -570,8 +586,9 @@ if payments_df is not None and not payments_df.empty:
     ]
     
     if not current_month_payments.empty:
-        # Taxa de pagamentos realizados
-        payment_rate = len(current_month_payments[current_month_payments['status'] == 'paid']) / len(current_month_payments) * 100
+        # Taxa de pagamentos realizados usando a coluna correta
+        status_column = get_payment_status_column(current_month_payments)
+        payment_rate = len(current_month_payments[current_month_payments[status_column] == 'paid']) / len(current_month_payments) * 100
         
         if payment_rate < 60:
             render_insight_card(
