@@ -326,6 +326,10 @@ with tab3:
                 # Count unique students
                 all_student_phones = []
                 for students_str in filtered_internships['students'].dropna():
+                    # Se o valor não for string (for inteiro), converta para string
+                    if not isinstance(students_str, str):
+                        students_str = str(students_str)
+                    
                     student_phones = students_str.split(',')
                     all_student_phones.extend([phone.strip() for phone in student_phones if phone.strip()])
                 
