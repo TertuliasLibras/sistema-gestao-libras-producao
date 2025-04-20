@@ -391,9 +391,23 @@ def update_user(user_id, user_data):
         # Carregar dados existentes
         users_df = pd.read_csv(USERS_FILE) if os.path.exists(USERS_FILE) else pd.DataFrame()
         
-        if not users_df.empty and 'id' in users_df.columns:
-            # Atualizar usuário
-            users_df.loc[users_df['id'] == user_id] = pd.Series(user_data)
+        if not users_df.empty:
+            # Verificar coluna de identificação
+            if 'id' in users_df.columns:
+                # Atualizar pelo ID
+                mask = users_df['id'] == user_id
+                if mask.any():
+                    for key, value in user_data.items():
+                        if key in users_df.columns:
+                            users_df.loc[mask, key] = value
+            
+            # Caso não tenha ID, tenta atualizar pelo username
+            elif 'username' in users_df.columns and 'username' in user_data:
+                mask = users_df['username'] == user_data['username']
+                if mask.any():
+                    for key, value in user_data.items():
+                        if key in users_df.columns:
+                            users_df.loc[mask, key] = value
             
             # Salvar
             users_df.to_csv(USERS_FILE, index=False)
