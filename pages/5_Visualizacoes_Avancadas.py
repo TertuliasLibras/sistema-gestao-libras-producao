@@ -626,9 +626,12 @@ else:
                     
                     # Obter total de horas de estágio
                     internship_hours = 0
-                    if not internships_df.empty:
+                    if not internships_df.empty and 'students' in internships_df.columns and 'hours' in internships_df.columns:
+                        # Verificar se a coluna students é do tipo string
+                        internships_df['students'] = internships_df['students'].astype(str)
+                        # Agora podemos usar str.contains com segurança
                         student_internships = internships_df[internships_df['students'].str.contains(student_phone, na=False)]
-                        if not student_internships.empty and 'hours' in student_internships.columns:
+                        if not student_internships.empty:
                             internship_hours = student_internships['hours'].sum()
                     
                     # Obter status de pagamentos
@@ -700,9 +703,12 @@ else:
                             
                             # Estágios
                             internship_hours = 0
-                            if not internships_df.empty:
+                            if not internships_df.empty and 'students' in internships_df.columns and 'hours' in internships_df.columns:
+                                # Verificar se a coluna students é do tipo string
+                                internships_df['students'] = internships_df['students'].astype(str)
+                                # Agora podemos usar str.contains com segurança
                                 student_internships = internships_df[internships_df['students'].str.contains(student_phone, na=False)]
-                                if not student_internships.empty and 'hours' in student_internships.columns:
+                                if not student_internships.empty:
                                     internship_hours = student_internships['hours'].sum()
                             
                             # Pagamentos
