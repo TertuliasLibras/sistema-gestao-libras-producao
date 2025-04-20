@@ -10,16 +10,38 @@ try:
     # Importar as funções de correção
     from auto_fix import fix_payment_status_references, fix_estagios_format_students
     
-    # Corrigir referências a 'payment_status' em todos os arquivos
+    # Corrigir referências a 'status' em todos os arquivos
     fixed_files = fix_payment_status_references()
     if fixed_files:
-        print("Corrigidas referências a 'payment_status' nos arquivos:", fixed_files)
+        print("Corrigidas referências a 'status' nos arquivos:", fixed_files)
     
     # Corrigir o problema em format_students na página de estágios
     if fix_estagios_format_students():
         print("Corrigido AttributeError em format_students na página de estágios")
 except Exception as e:
     print("Erro ao executar correções automáticas:", str(e))
+
+# Integrar sistema de backup automático com Google Drive
+try:
+    import auto_backup
+    
+    # Certificar-se de que os diretórios existam
+    auto_backup.ensure_directories()
+    
+    # Tentar sincronizar dados do Drive ao iniciar (se configurado)
+    if os.path.exists(auto_backup.CREDENTIALS_PATH) and os.path.exists(auto_backup.TOKEN_PATH):
+        print("Tentando sincronizar dados do Google Drive...")
+        sync_result = auto_backup.sync_from_drive_on_startup()
+        if sync_result:
+            print("Dados sincronizados com sucesso do Google Drive")
+        else:
+            print("Não foi possível sincronizar dados do Google Drive")
+    
+    # Integrar backup automático com funções de banco de dados
+    auto_backup.patch_database_functions()
+    print("Sistema de backup automático com Google Drive integrado")
+except Exception as e:
+    print("Erro ao configurar backup automático:", str(e))
 from utils import (
     load_students_data, 
     load_payments_data, 
@@ -218,6 +240,15 @@ else:
             st.session_state['mostrar_gerenciamento_usuarios'] = False
             st.session_state['mostrar_configuracoes'] = False
         
+        # Opção para backup com Google Drive (apenas admin)
+        if st.session_state['usuario_autenticado']['nivel'] == "admin":
+            if st.button("Backup Google Drive", use_container_width=True):
+                st.session_state['nav_page'] = 'backup_drive'
+                st.session_state['mostrar_gerenciamento_usuarios'] = False
+                st.session_state['mostrar_configuracoes'] = False
+                st.session_state['mostrar_backup'] = False
+                st.rerun()
+        
         st.divider()
         
         # Botão de logout
@@ -411,7 +442,8 @@ else:
                     'pagamentos': 'pages/pagamentos.py',
                     'estagios': 'pages/estagios.py',
                     'relatorios': 'pages/relatorios.py',
-                    'analise_desempenho': 'pages/analise_desempenho.py'
+                    'analise_desempenho': 'pages/analise_desempenho.py',
+                    'backup_drive': 'pages/6_Backup_Drive.py'
                 }
                 
                 # Caminho do arquivo da página
@@ -561,6 +593,10 @@ else:
         elif st.session_state['nav_page'] == 'analise_desempenho':
             # Carregar página de análise de desempenho
             load_page_module('analise_desempenho')
+            
+        elif st.session_state['nav_page'] == 'backup_drive':
+            # Carregar página de backup com Google Drive
+            load_page_module('backup_drive')
             
         else:  # dashboard é o padrão
             # Dashboard
