@@ -14,12 +14,19 @@ import streamlit as st
 from datetime import datetime
 from pathlib import Path
 
-import google.oauth2.credentials
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+# Verificar se as bibliotecas do Google estão disponíveis
+GOOGLE_DRIVE_AVAILABLE = False
+try:
+    import google.oauth2.credentials
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+    GOOGLE_DRIVE_AVAILABLE = True
+except ImportError:
+    # As bibliotecas não estão disponíveis
+    pass
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO, 
@@ -312,6 +319,16 @@ def cleanup_old_backups():
 
 def auto_backup_after_change():
     """Realizar backup automático após alterações no banco de dados"""
+    # Verificar se o Google Drive está disponível
+    if not GOOGLE_DRIVE_AVAILABLE:
+        # Se as bibliotecas não estão disponíveis, apenas criar backup local
+        zip_file = create_zip_backup()
+        if zip_file:
+            logger.info(f"Backup local criado: {zip_file}")
+            cleanup_old_backups()
+            return True
+        return False
+    
     # Verificar última vez que o backup foi realizado (para evitar muitos backups em sequência)
     last_backup_time = st.session_state.get('last_backup_time', 0)
     current_time = time.time()
@@ -325,10 +342,22 @@ def auto_backup_after_change():
                 logger.info("Backup automático realizado com sucesso")
                 return True
             else:
+                # Tentar pelo menos criar um backup local
+                zip_file = create_zip_backup()
+                if zip_file:
+                    logger.info(f"Backup local criado como alternativa: {zip_file}")
+                    cleanup_old_backups()
+                    return True
                 logger.warning("Falha no backup automático")
                 return False
         except Exception as e:
             logger.error(f"Erro no backup automático: {e}")
+            # Tentar pelo menos criar um backup local
+            zip_file = create_zip_backup()
+            if zip_file:
+                logger.info(f"Backup local criado como alternativa após erro: {zip_file}")
+                cleanup_old_backups()
+                return True
             return False
     else:
         logger.info("Backup automático ignorado (muito cedo desde o último backup)")
@@ -336,6 +365,30 @@ def auto_backup_after_change():
 
 def sync_from_drive_on_startup():
     """Sincronizar dados do Google Drive ao iniciar o sistema"""
+    # Verificar se o Google Drive está disponível
+    if not GOOGLE_DRIVE_AVAILABLE:
+        logger.warning("Google Drive API não está disponível. Sincronização ignorada.")
+        return False
+    
+    # Verificar se já existem arquivos de backup locais que podemos usar
+    try:
+        backup_files = [f for f in os.listdir(BACKUP_DIR) if f.startswith("backup_") and f.endswith(".zip")]
+        if backup_files:
+            # Ordenar por data de criação (mais recente primeiro)
+            backup_files.sort(reverse=True)
+            # Usar o backup local mais recente
+            backup_path = os.path.join(BACKUP_DIR, backup_files[0])
+            logger.info(f"Usando backup local mais recente: {backup_path}")
+            
+            # Restaurar dados do backup local
+            result = restore_backup_from_zip(backup_path)
+            if result:
+                logger.info("Sistema sincronizado com sucesso a partir do backup local mais recente.")
+                return True
+    except Exception as e:
+        logger.warning(f"Erro ao verificar backups locais: {e}")
+    
+    # Se não houver backups locais ou falhar, tentar o Google Drive
     try:
         drive_service = get_drive_service()
         if not drive_service:
@@ -359,7 +412,7 @@ def sync_from_drive_on_startup():
         # Restaurar dados do backup
         result = restore_backup_from_zip(backup_path)
         if result:
-            logger.info("Sistema sincronizado com sucesso a partir do backup mais recente.")
+            logger.info("Sistema sincronizado com sucesso a partir do backup mais recente do Drive.")
             return True
         else:
             logger.error("Falha ao restaurar dados do backup.")
@@ -419,6 +472,70 @@ def setup_auto_backup():
     """Configura o backup automático e exibe opções ao usuário"""
     st.title("Configuração de Backup Automático")
     
+    # Verificar se as bibliotecas do Google estão disponíveis
+    if not GOOGLE_DRIVE_AVAILABLE:
+        st.error("""
+        As bibliotecas do Google Drive não estão disponíveis neste ambiente.
+        
+        Para habilitar o backup automático com Google Drive, instale as seguintes bibliotecas:
+        - google-auth
+        - google-auth-oauthlib
+        - google-api-python-client
+        
+        No entanto, o sistema continua funcionando com backup local automático.
+        """)
+        
+        # Mostrar os backups locais disponíveis
+        st.subheader("Backups Locais")
+        try:
+            backup_files = [f for f in os.listdir(BACKUP_DIR) if f.startswith("backup_") and f.endswith(".zip")]
+            
+            if backup_files:
+                # Ordenar por data (mais recente primeiro)
+                backup_files.sort(reverse=True)
+                
+                for backup_file in backup_files:
+                    col1, col2 = st.columns([3, 1])
+                    
+                    # Extrair timestamp do nome do arquivo
+                    try:
+                        timestamp_str = backup_file.replace("backup_", "").replace(".zip", "")
+                        dt = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                        formatted_date = dt.strftime("%d/%m/%Y %H:%M:%S")
+                    except:
+                        formatted_date = "Data desconhecida"
+                    
+                    with col1:
+                        st.write(f"{backup_file} - {formatted_date}")
+                    
+                    with col2:
+                        if st.button("Restaurar", key=f"restore_local_{backup_file}"):
+                            with st.spinner("Restaurando backup..."):
+                                backup_path = os.path.join(BACKUP_DIR, backup_file)
+                                result = restore_backup_from_zip(backup_path)
+                                if result:
+                                    st.success("Backup restaurado com sucesso!")
+                                else:
+                                    st.error("Falha ao restaurar backup.")
+            else:
+                st.info("Nenhum backup local encontrado.")
+                
+            # Opção para criar backup local
+            if st.button("Criar Backup Local"):
+                with st.spinner("Criando backup..."):
+                    backup_file = create_zip_backup()
+                    if backup_file:
+                        st.success(f"Backup criado com sucesso: {os.path.basename(backup_file)}")
+                        cleanup_old_backups()
+                    else:
+                        st.error("Falha ao criar backup.")
+                        
+        except Exception as e:
+            st.error(f"Erro ao listar backups locais: {str(e)}")
+        
+        return
+    
+    # Continuar com a configuração do Google Drive se as bibliotecas estiverem disponíveis
     # Verificar se o arquivo de credenciais existe
     credentials_exist = os.path.exists(CREDENTIALS_PATH)
     
@@ -492,6 +609,43 @@ def setup_auto_backup():
                                         st.error("Falha ao baixar backup.")
                 else:
                     st.info("Nenhum backup encontrado no Google Drive.")
+                
+                # Também mostrar backups locais
+                st.subheader("Backups Locais")
+                try:
+                    backup_files = [f for f in os.listdir(BACKUP_DIR) if f.startswith("backup_") and f.endswith(".zip")]
+                    
+                    if backup_files:
+                        # Ordenar por data (mais recente primeiro)
+                        backup_files.sort(reverse=True)
+                        
+                        for backup_file in backup_files:
+                            col1, col2 = st.columns([3, 1])
+                            
+                            # Extrair timestamp do nome do arquivo
+                            try:
+                                timestamp_str = backup_file.replace("backup_", "").replace(".zip", "")
+                                dt = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                                formatted_date = dt.strftime("%d/%m/%Y %H:%M:%S")
+                            except:
+                                formatted_date = "Data desconhecida"
+                            
+                            with col1:
+                                st.write(f"{backup_file} - {formatted_date}")
+                            
+                            with col2:
+                                if st.button("Restaurar", key=f"restore_local_{backup_file}"):
+                                    with st.spinner("Restaurando backup..."):
+                                        backup_path = os.path.join(BACKUP_DIR, backup_file)
+                                        result = restore_backup_from_zip(backup_path)
+                                        if result:
+                                            st.success("Backup restaurado com sucesso!")
+                                        else:
+                                            st.error("Falha ao restaurar backup.")
+                    else:
+                        st.info("Nenhum backup local encontrado.")
+                except Exception as e:
+                    st.error(f"Erro ao listar backups locais: {str(e)}")
                 
                 # Opção para reconfigurar
                 st.subheader("Reconfigurar")
