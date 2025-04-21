@@ -28,14 +28,15 @@ try:
     # Certificar-se de que os diretórios existam
     auto_backup.ensure_directories()
     
-    # Tentar sincronizar dados do Drive ao iniciar (se configurado)
-    if os.path.exists(auto_backup.CREDENTIALS_PATH) and os.path.exists(auto_backup.TOKEN_PATH):
-        print("Tentando sincronizar dados do Google Drive...")
-        sync_result = auto_backup.sync_from_drive_on_startup()
-        if sync_result:
-            print("Dados sincronizados com sucesso do Google Drive")
-        else:
-            print("Não foi possível sincronizar dados do Google Drive")
+    # Sincronizar dados do backup ao iniciar (somente na primeira execução)
+    if 'backup_sync_done' not in st.session_state:
+        try:
+            auto_backup.sync_from_drive_on_startup()
+            st.session_state['backup_sync_done'] = True
+            print("Sistema de backup automático com Google Drive integrado")
+        except Exception as e:
+            print(f"Erro ao sincronizar dados do backup: {e}")
+            st.session_state['backup_sync_done'] = True
     
     # Integrar backup automático com funções de banco de dados
     auto_backup.patch_database_functions()
@@ -180,6 +181,13 @@ else:
             
         if st.button("🧠 Análise de Desempenho", use_container_width=True):
             st.session_state['nav_page'] = 'analise_desempenho'
+            st.session_state['mostrar_gerenciamento_usuarios'] = False
+            st.session_state['mostrar_configuracoes'] = False
+            st.session_state['mostrar_backup'] = False
+            st.rerun()
+            
+        if st.button("💾 Backup e Sincronização", use_container_width=True):
+            st.session_state['nav_page'] = 'backup_drive'
             st.session_state['mostrar_gerenciamento_usuarios'] = False
             st.session_state['mostrar_configuracoes'] = False
             st.session_state['mostrar_backup'] = False
