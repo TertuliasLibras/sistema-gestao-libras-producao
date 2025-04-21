@@ -40,6 +40,10 @@ CREDENTIALS_DIR = "credentials"
 TOKEN_PATH = os.path.join(CREDENTIALS_DIR, "token.json")
 CREDENTIALS_PATH = os.path.join(CREDENTIALS_DIR, "credentials.json")
 
+# Garantir que os diretórios existam
+for directory in [DATA_DIR, BACKUP_DIR, CREDENTIALS_DIR]:
+    os.makedirs(directory, exist_ok=True)
+
 # Configuração do Google Drive
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 BACKUP_FOLDER_NAME = "Libras_Sistema_Backup"  # Nome da pasta no Google Drive
@@ -468,7 +472,7 @@ def upload_credentials_file():
     
     return False
 
-def setup_auto_backup():
+def setup_auto_backup(admin_mode=False):
     """Configura o backup automático e exibe opções ao usuário"""
     st.title("Configuração de Backup Automático")
     
