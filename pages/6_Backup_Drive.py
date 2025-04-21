@@ -12,10 +12,9 @@ if not verify_authentication():
 # Título da página
 st.title("Backup e Sincronização")
 
-# Verificar se o usuário tem permissão de administrador
-if st.session_state.get("user_level", "") != "admin":
-    st.error("Apenas administradores podem acessar esta página.")
-    st.stop()
+# Permitir que todos os usuários acessem a página de backup
+# As funções de administração serão restritas dentro da página
+admin_mode = st.session_state.get("usuario_autenticado", {}).get("nivel", "") == "admin"
 
 # Garantir que os diretórios necessários existam
 auto_backup.ensure_directories()
@@ -84,7 +83,7 @@ if not auto_backup.GOOGLE_DRIVE_AVAILABLE:
         st.error(f"Erro ao listar backups: {str(e)}")
 else:
     # Se a API do Google Drive estiver disponível, mostrar a interface completa
-    auto_backup.setup_auto_backup()
+    auto_backup.setup_auto_backup(admin_mode=admin_mode)
     
     # Explicação sobre o backup automático
     st.markdown("""
